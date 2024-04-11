@@ -1,0 +1,353 @@
+#+begin_export latex
+\section*{Implementation}
+Package \ty{ancs} provides functions for finding anchors and
+processing homologies.
+#+end_export
+#+begin_src go <<ancs.go>>=
+  package ancs
+  import (
+	  //<<Imports>>
+  )
+  //<<Data structures>>
+  //<<Methods>>
+  //<<Functions>>
+#+end_src
+#+begin_export latex
+\subsection{Data structure \ty{Seg}}
+We declare a custom data type \ty{Seg} for storing segments of the
+forward strand of the subject. A segment has a start \ty{s} and a
+length \ty{l}.
+#+end_export
+#+begin_src go <<Data structures>>=
+  type Seg struct {
+	  s int
+	  l int
+  }
+#+end_src
+#+begin_export latex
+\subsection{Methods}
+\subsubsection{Method \ty{End()}}
+Method \ty{End()} returns an end of a segment.
+#+end_export
+#+begin_src go <<Methods>>=
+  func (seg *Seg) End() int {
+	  return seg.s + seg.l - 1
+  }
+#+end_src
+#+begin_export latex
+\subsubsection{Method \ty{NewSeg()}}
+Constructor method \ty{NewSeg()} returns an empty segment.
+#+end_export
+#+begin_src go <<Methods>>=
+  func NewSeg() Seg {
+	  return Seg{s:0, l:0}
+  }
+#+end_src
+#+begin_export latex
+\subsection{Functions}
+The \ty{ancs} package contains the following public functions:
+\ty{SortByStart()}, \ty{MinAncLen()}, and \ty{FindHomologies()}.
+#+end_export
+#+begin_src go <<Functions>>=
+  //<<SortByStart>>
+  //<<MinAncLen>>
+  //<<FindHomologies>>
+#+end_src
+#+begin_export latex
+\subsubsection{Function \ty{SortByStart()}}
+The function \ty{SortByStart()} accepts a slice of pointers to
+segments \ty{s} and sorts the segments by their starts in ascending
+order.
+#+end_export
+#+begin_src go <<SortByStart>>=
+  func SortByStart(s []*Seg) []*Seg {
+          sort.Slice(s, func(i, j int) bool {
+                  return s[i].s < s[j].s
+          })
+          return s
+  }
+#+end_src
+#+begin_export latex
+We import \ty{sort}.
+#+end_export
+#+begin_src go <<Imports>>=
+  "sort"
+#+end_src
+#+begin_export latex
+\subsubsection{Function \ty{MinAncLen()}}
+To find a homology, we need to find a pair of anchors equidistant in
+the query and the subject. An anchor is a unique non-random match. Its
+non-randomness is defined by its length. The threshold length, or the
+minimum anchor length, is found from the null shustring length
+distribution for a sequence with given length and GC content. We
+declare the function \textit{MinAncLen()}, which returns the
+minimum anchor length.
+#+end_export
+#+begin_src go <<MinAncLen>>=
+  func MinAncLen(l int, g float64, t float64) int {
+	  x := 1
+	  cq := 0.0 
+	  for cq < t {
+		  x++
+		  cq = cq + sus.Prob(l, g, x)
+	  }
+	  return x
+  }
+#+end_src
+#+begin_export latex
+We import \ty{sus}.
+#+end_export
+#+begin_src go <<Imports>>=
+  "github.com/evolbioinf/sus"
+#+end_src
+#+begin_export latex
+\subsubsection{Function \ty{FindHomologies()}}
+The function \ty{FindHomologies()} accepts a \ty{fasta} query
+sequence, an enhanced suffix array and length of the subject sequence,
+and the minimum anchor length \ty{a}. The function returns a slice of
+sorted non-overlapping homologies. We initialize variables, perform
+anchor-based search of homologies, sort the found homologies, and
+reduce overlaps.
+#+end_export
+#+begin_src go <<FindHomologies>>=
+  func FindHomologies(
+          query *fasta.Sequence,
+          e *esa.Esa,
+          subjectLen int,
+          a int) []*Seg {
+  //<<Initialize anchor search>>
+  //<<Anchor search>>
+  //<<Sort homologies>>
+  //<<Reduce overlaps>>
+  }
+#+end_src
+#+begin_export latex
+We import \ty{fasta} and \ty{esa}.
+#+end_export
+#+begin_src go <<Imports>>=
+  "github.com/ivantsers/fasta"
+  "github.com/evolbioinf/esa"
+#+end_src
+#+begin_export latex
+We declare variables to operate with in the anchor search: current and
+previous positions in the query, current and previous match intervals,
+a segment, a map of mismatches between two anchors in the segment,
+logic switches, an array of homologies, and the the query's length,
+which we also calculate. As one might notice, we calculate the
+subject's length before calling \ty{FindHomologies()}, while we
+calculate the query length \textit{inside} the function. This design
+is intentional, as the same subject can be compared to multiple
+queries. Hence we have to build an enhanced suffix array only once.
+#+end_export
+#+begin_src go <<Initialize anchor search>>=
+    var qc, qp int
+    var mc, mp *esa.Minterval
+  //seg := NewSeg()
+    n := make(map[int]bool)
+    var seg Seg
+    var h []*Seg
+    areEquidist, rightAnchorFound := false, false
+    queryLen := query.Length()
+#+end_src
+#+begin_export latex
+We perform anchor search for each prefix in our query. We get a prefix
+starting from the current position and ening at the end of the
+query. Then we search for mathces in the enhanced suffix array of the
+subject. Upon finding a match in a prefix, we skip its length plus one
+nucleotide (a guaranteed mismatch) before proceeding with the next
+prefix.
+
+If the match is unique and longer than the minimum anchor length, we
+deal with a segment and remember the match and position in the query.
+Should the distance between the current and previous mathces be equal
+in the query and the subject, we extend the current
+segment. Nucleotides situated between two anchors are mismatches, or
+segregation sites. We remember their positions.
+
+If two anchors are not equidistant, we check whether we have already
+found the right anchor. If so, we have found a homology. If not, we
+open a new segment.
+#+end_export
+#+begin_src go <<Anchor search>>=
+  for qc < queryLen {
+          queryPrefix := query.Data()[qc:queryLen]
+          mc = e.MatchPref(queryPrefix)
+          if mc.L > a && isUnique(mc) {
+                  areEquidist = qc - qp == e.Sa[mc.I] - e.Sa[mp.I]
+                  if qc > qp && areEquidist {
+                  //<<Extend segment and mark mismatches>>
+                  } else {
+                          if rightAnchorFound {
+                                  //<<We have found a homology>>
+                          }
+                          //<<Open segment>>
+                  }
+                  qp = qc
+                  mp = mc
+          }
+          qc = qc + mc.L + 1
+  }
+#+end_src
+#+begin_export latex
+We define the function \ty{isUnique()}. If a match interval begins and
+ends at the same position in an enhanced suffix array, it is a unique
+match.
+#+end_export
+#+begin_src go <<Functions>>=
+  func isUnique(m *esa.Minterval) bool {
+          if m.J == m.I {
+                  return true
+          } else {
+                  return false
+          }
+  }
+#+end_src
+#+begin_export latex
+We extend the segment to the end of the new anchor and add positions
+between the end of the last left anchor and the start right anchor to
+the map of mismatches as keys. We also remember that we have just
+found a new right anchor.
+#+end_export
+#+begin_src go <<Extend segment and mark mismatches>>=
+  seg.l = seg.l + qc - e.Sa[mc.J] + mc.L
+  for pos := e.Sa[mp.J] + 1; pos < e.Sa[mc.I]; pos++ {
+          n[pos] = true
+  }
+  rightAnchorFound = true
+#+end_src
+#+begin_export latex
+We append our segment to the slice of homologies. Before doing that,
+we check whether the segment starts on the reverse strand of the
+subject. If so, we project it onto the forward strand.
+#+end_export
+#+begin_src go <<We have found a homology>>=
+  if seg.s > subjectLen {
+          seg.s = seg.s - subjectLen - 1
+  }
+  h = append(h, &seg)
+#+end_src
+#+begin_export latex
+To open a segment is to declare its start and length, and forget that
+the right anchor was found.
+#+end_export
+#+begin_src go <<Open segment>>=
+  seg.s = e.Sa[mc.I]
+  seg.l = mc.L
+  rightAnchorFound = false
+#+end_src
+#+begin_export latex
+We sort the slice of homologies.
+#+end_export
+#+begin_src go <<Sort homologies>>=
+  SortByStart(h)
+#+end_src
+#+begin_export latex
+We anticipate many overlapping homologies to be found. We reduce
+overlapping stacks of homologies to the longest chain of co-linear
+non-overlapping homologies using the algorithm for two-dimensional
+fragment chaining. We start with initializing variables, then we
+calculate chain scores, find links of the longest chain through
+backtracking, and return the chain.
+#+end_export
+#+begin_src go <<Reduce overlaps>>=
+  //<<Initialize chaining>>
+  //<<Calculate chain score>>
+  //<<Backtrack the chain>>
+  //<<Return the chain>>
+#+end_src
+#+begin_export latex
+We declare variables that describe the chain. We traverse the sorted
+\ty{h} starting from an imaginary zero-long homology \ty{h[-1]} (the
+beginning of the future chain). For each homology \ty{i} we
+initialize:
+\begin{itemize}
+  \itemsep0em
+  \item \ty{predecessor}---the previous homology in the longest chain
+    endingq before \ty{i});
+  \item \ty{score}---the length of the longest chain ending at
+    \ty{i}. The initial score of the chain is the first
+    homology's length;
+  \item \ty{visited}---whether \ty{i} was visited during backtracking
+    of chain links.
+\end{itemize}
+We also initialize varables for current maximal score and index of the
+corresponding link.
+#+end_export
+#+begin_src go <<Initialize chaining>>=
+  predecessor := make(map[int]int)
+  score := make(map[int]int)
+  visited := make(map[int]bool)
+  for i := -1; i < len(h); i++ {
+	  predecessor[i] = 0
+	  score[i] = 0
+	  visited[i] = false
+  }
+  score[0] = h[0].s
+  maxScore, maxIndex := -1, -1
+#+end_src
+#+begin_export latex
+We calculate the chain score. We traverse \ty{h} starting from the
+second homology \ty{h[1]}. For each \ty{h[i]} we find \ty{h[k]} that
+can form the longest chain ending before \ty{h[i]}. Upon finding such
+\ty{h[k]}, we update \ty{maxIndex} and score of the chain.
+#+end_export
+#+begin_src go <<Calculate chain score>>=
+  for i := 1; i < len(h); i++ {
+          maxScore = -1
+          maxIndex = -1
+          for k := 0; k < i - 1; k++ {
+                  if h[k].End() <= h[k].s {
+                          if score[k] > maxScore {
+                                  maxScore = score[k]
+                                  maxIndex = k
+                          }
+                  }
+          }
+          predecessor[i] = maxIndex
+          score[i] = score[maxIndex] + h[i].l
+  }
+#+end_src
+#+begin_export latex
+After we have scores for all homologies calculated, we find \ty{s},
+index of the highest-scored homology. This homology is the final link
+of the chain we are looking for, and its score is the total score of
+it. To find \ty{s}, we use the function \ty{argmaxMapInt()}, which we
+still have to write. Then we backtrack through the predecessor links
+and mark visited homologies.
+#+end_export
+#+begin_src go <<Backtrack the chain>>=
+  s := argmaxMapInt(score)
+  for s > 0 {
+	  visited[s] = true
+	  s = predecessor[s]
+  }
+#+end_src
+#+begin_export latex
+The function \ty{argmaxMapInt()} returns key with the largest value
+from a map, where both keys and values are integers.
+#+end_export
+#+begin_src go <<Functions>>=
+  func argmaxMapInt(m map[int]int) int {
+      var maxKey, maxValue int
+      for key, value := range m {
+	  if value > maxValue {
+	      maxValue = value
+	      maxKey = key
+	  }
+      }
+      return maxKey
+  }
+#+end_src
+#+begin_export latex
+We extract only visited elements of \ty{h} and return the reduced
+slice.
+#+end_export
+#+begin_src go <<Return the chain>>=
+  var hred []*Seg
+  for i := 0; i < len(h); i++ {
+	  if visited[i] {
+		  hred = append(hred, h[i])
+	  }
+  }
+  return hred
+#+end_src
