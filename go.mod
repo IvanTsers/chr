@@ -1,4 +1,4 @@
-module ancs
+module github.com/ivantsers/ancs
 
 go 1.21.5
 
