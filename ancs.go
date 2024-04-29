@@ -18,7 +18,7 @@ func (seg *Seg) End() int {
 func NewSeg() Seg {
 	return Seg{s: 0, l: 0}
 }
-func SortByStart(s []*Seg) []*Seg {
+func SortByStart(s []Seg) []Seg {
 	sort.Slice(s, func(i, j int) bool {
 		return s[i].s < s[j].s
 	})
@@ -37,23 +37,24 @@ func FindHomologies(
 	query *fasta.Sequence,
 	e *esa.Esa,
 	subjectLen int,
-	a int) []*Seg {
+	a int) []Seg {
 	var qc, qp int
-	var mc, mp *esa.Minterval
-	//seg := NewSeg()
+	var mc *esa.Minterval
+	var prevStartS, prevEndS int
+	// seg := NewSeg()
 	n := make(map[int]bool)
 	var seg Seg
-	var h []*Seg
+	var h []Seg
 	areEquidist, rightAnchorFound := false, false
 	queryLen := query.Length()
 	for qc < queryLen {
 		queryPrefix := query.Data()[qc:queryLen]
 		mc = e.MatchPref(queryPrefix)
 		if mc.L > a && isUnique(mc) {
-			areEquidist = qc-qp == e.Sa[mc.I]-e.Sa[mp.I]
+			areEquidist = qc-qp == e.Sa[mc.I]-prevStartS
 			if qc > qp && areEquidist {
-				seg.l = seg.l + qc - e.Sa[mc.J] + mc.L
-				for pos := e.Sa[mp.J] + 1; pos < e.Sa[mc.I]; pos++ {
+				seg.l = seg.l + qc - prevEndS + mc.L
+				for pos := prevEndS + 1; pos < e.Sa[mc.I]; pos++ {
 					n[pos] = true
 				}
 				rightAnchorFound = true
@@ -62,14 +63,13 @@ func FindHomologies(
 					if seg.s > subjectLen {
 						seg.s = seg.s - subjectLen - 1
 					}
-					h = append(h, &seg)
+					h = append(h, seg)
 				}
 				seg.s = e.Sa[mc.I]
 				seg.l = mc.L
 				rightAnchorFound = false
 			}
 			qp = qc
-			mp = mc
 		}
 		qc = qc + mc.L + 1
 	}
@@ -78,17 +78,17 @@ func FindHomologies(
 	score := make(map[int]int)
 	visited := make(map[int]bool)
 	for i := -1; i < len(h); i++ {
-		predecessor[i] = 0
+		predecessor[i] = -1
 		score[i] = 0
 		visited[i] = false
 	}
 	score[0] = h[0].s
-	maxScore, maxIndex := -1, -1
+	maxScore, maxIndex := 0, -1
 	for i := 1; i < len(h); i++ {
 		maxScore = -1
 		maxIndex = -1
 		for k := 0; k < i-1; k++ {
-			if h[k].End() <= h[k].s {
+			if h[k].End() < h[k].l {
 				if score[k] > maxScore {
 					maxScore = score[k]
 					maxIndex = k
@@ -99,11 +99,11 @@ func FindHomologies(
 		score[i] = score[maxIndex] + h[i].l
 	}
 	s := argmaxMapInt(score)
-	for s > 0 {
+	for s > -1 {
 		visited[s] = true
 		s = predecessor[s]
 	}
-	var hred []*Seg
+	var hred []Seg
 	for i := 0; i < len(h); i++ {
 		if visited[i] {
 			hred = append(hred, h[i])

@@ -60,7 +60,7 @@ segments \ty{s} and sorts the segments by their starts in ascending
 order.
 #+end_export
 #+begin_src go <<SortByStart>>=
-  func SortByStart(s []*Seg) []*Seg {
+  func SortByStart(s []Seg) []Seg {
           sort.Slice(s, func(i, j int) bool {
                   return s[i].s < s[j].s
           })
@@ -114,7 +114,7 @@ reduce overlaps.
           query *fasta.Sequence,
           e *esa.Esa,
           subjectLen int,
-          a int) []*Seg {
+          a int) []Seg {
   //<<Initialize anchor search>>
   //<<Anchor search>>
   //<<Sort homologies>>
@@ -130,24 +130,25 @@ We import \ty{fasta} and \ty{esa}.
 #+end_src
 #+begin_export latex
 We declare variables to operate with in the anchor search: current and
-previous positions in the query, current and previous match intervals,
-a segment, a map of mismatches between two anchors in the segment,
-logic switches, an array of homologies, and the the query's length,
-which we also calculate. As one might notice, we calculate the
-subject's length before calling \ty{FindHomologies()}, while we
-calculate the query length \textit{inside} the function. This design
-is intentional, as the same subject can be compared to multiple
+previous positions in the query, pointers to the current and previous
+match intervals, a segment, a map of mismatches between two anchors in
+the segment, logic switches, an array of homologies, and the the
+query's length, which we also calculate. As one might notice, we
+calculate the subject's length before calling \ty{FindHomologies()},
+while we calculate the query length \textit{inside} the function. This
+design is intentional, as the same subject can be compared to multiple
 queries. Hence we have to build an enhanced suffix array only once.
 #+end_export
 #+begin_src go <<Initialize anchor search>>=
-    var qc, qp int
-    var mc, mp *esa.Minterval
+  var qc, qp int
+  var mc *esa.Minterval
+  var prevStartS, prevEndS int
   //seg := NewSeg()
-    n := make(map[int]bool)
-    var seg Seg
-    var h []*Seg
-    areEquidist, rightAnchorFound := false, false
-    queryLen := query.Length()
+  n := make(map[int]bool)
+  var seg Seg
+  var h []Seg
+  areEquidist, rightAnchorFound := false, false
+  queryLen := query.Length()
 #+end_src
 #+begin_export latex
 We perform anchor search for each prefix in our query. We get a prefix
@@ -173,7 +174,7 @@ open a new segment.
           queryPrefix := query.Data()[qc:queryLen]
           mc = e.MatchPref(queryPrefix)
           if mc.L > a && isUnique(mc) {
-                  areEquidist = qc - qp == e.Sa[mc.I] - e.Sa[mp.I]
+                  areEquidist = qc - qp == e.Sa[mc.I] - prevStartS
                   if qc > qp && areEquidist {
                   //<<Extend segment and mark mismatches>>
                   } else {
@@ -183,7 +184,6 @@ open a new segment.
                           //<<Open segment>>
                   }
                   qp = qc
-                  mp = mc
           }
           qc = qc + mc.L + 1
   }
@@ -209,8 +209,8 @@ the map of mismatches as keys. We also remember that we have just
 found a new right anchor.
 #+end_export
 #+begin_src go <<Extend segment and mark mismatches>>=
-  seg.l = seg.l + qc - e.Sa[mc.J] + mc.L
-  for pos := e.Sa[mp.J] + 1; pos < e.Sa[mc.I]; pos++ {
+  seg.l = seg.l + qc - prevEndS + mc.L
+  for pos := prevEndS + 1; pos < e.Sa[mc.I]; pos++ {
           n[pos] = true
   }
   rightAnchorFound = true
@@ -224,7 +224,7 @@ subject. If so, we project it onto the forward strand.
   if seg.s > subjectLen {
           seg.s = seg.s - subjectLen - 1
   }
-  h = append(h, &seg)
+  h = append(h, seg)
 #+end_src
 #+begin_export latex
 To open a segment is to declare its start and length, and forget that
@@ -278,12 +278,12 @@ corresponding link.
   score := make(map[int]int)
   visited := make(map[int]bool)
   for i := -1; i < len(h); i++ {
-	  predecessor[i] = 0
+	  predecessor[i] = -1
 	  score[i] = 0
 	  visited[i] = false
   }
   score[0] = h[0].s
-  maxScore, maxIndex := -1, -1
+  maxScore, maxIndex := 0, -1
 #+end_src
 #+begin_export latex
 We calculate the chain score. We traverse \ty{h} starting from the
@@ -296,7 +296,7 @@ can form the longest chain ending before \ty{h[i]}. Upon finding such
           maxScore = -1
           maxIndex = -1
           for k := 0; k < i - 1; k++ {
-                  if h[k].End() <= h[k].s {
+                  if h[k].End() < h[k].l {
                           if score[k] > maxScore {
                                   maxScore = score[k]
                                   maxIndex = k
@@ -317,7 +317,7 @@ and mark visited homologies.
 #+end_export
 #+begin_src go <<Backtrack the chain>>=
   s := argmaxMapInt(score)
-  for s > 0 {
+  for s > -1 {
 	  visited[s] = true
 	  s = predecessor[s]
   }
@@ -343,7 +343,7 @@ We extract only visited elements of \ty{h} and return the reduced
 slice.
 #+end_export
 #+begin_src go <<Return the chain>>=
-  var hred []*Seg
+  var hred []Seg
   for i := 0; i < len(h); i++ {
 	  if visited[i] {
 		  hred = append(hred, h[i])
