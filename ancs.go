@@ -88,7 +88,7 @@ func FindHomologies(
 		maxScore = 0
 		maxIndex = -1
 		for k := 0; k < i-1; k++ {
-			if h[k].End() < h[k].l {
+			if h[k].End() < h[i].s {
 				if score[k] > maxScore {
 					maxScore = score[k]
 					maxIndex = k
