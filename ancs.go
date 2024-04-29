@@ -82,10 +82,10 @@ func FindHomologies(
 		score[i] = 0
 		visited[i] = false
 	}
-	score[0] = h[0].s
+	score[0] = h[0].l
 	maxScore, maxIndex := 0, -1
 	for i := 1; i < len(h); i++ {
-		maxScore = -1
+		maxScore = 0
 		maxIndex = -1
 		for k := 0; k < i-1; k++ {
 			if h[k].End() < h[k].l {
