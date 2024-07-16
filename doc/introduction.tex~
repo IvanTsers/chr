@@ -1,0 +1,13 @@
+A local alignment of two similar sequences can be approximated as a
+region flanked by long exact matches with at least one mismatch
+between them. The use of enhanced suffix arrays for finding the exact
+matches makes this approximation fast compared to an actual alignment.
+This approach is used in programs for fast estimation of evolutionary
+distances, such as \ty{andi}~\cite{hau15:and} and
+\ty{phylonium}~\cite{kloe19:phy}. Although the latter has the option to
+print homologies, it is not the primary scope of the program. In turn,
+this function is essential for the workflow of the program
+\texttt{fur}~\cite{hau21:fur}.
+
+This \ty{alan} package, is an implementation of anchor-based search of
+homologies.
