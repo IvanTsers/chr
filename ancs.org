@@ -506,20 +506,22 @@ We define \ty{getSortedKeys()}.
 \subsubsection{\ty{SegToFasta()}}
 !\ty{SegToFasta()} converts a slice of segments into actual fasta
 !sequences. It accepts a slice of segments, a pointer to the
-!corresponding ESA, and a map of Ns. It returns a slice of pointers to
-!fasta entries (type fasta.Sequence).
+!corresponding ESA, a map of Ns, and a \ty{bool} toggle for printing
+!\ty{Ns}. It returns a slice of pointers to fasta entries (type
+!\ty{fasta.Sequence}).
 #+end_export
 #+begin_src go <<SegToFasta>>=
   func SegToFasta(segments []Seg,
 	  e *esa.Esa,
-	  n map[int]bool) []*fasta.Sequence {
+	  n map[int]bool,
+	  printNs bool) []*fasta.Sequence {
 	  var segfasta []*fasta.Sequence
 	  for i, s := range(segments) {
 		  start := s.s
 		  end := s.End()
 		  var data []byte
 		  for j := start; j < end + 1; j++ {
-			  if n[j] {
+			  if printNs && n[j] {
 				  data = append(data, 'N')
 			  } else {
 				  data = append(data, e.T[j])

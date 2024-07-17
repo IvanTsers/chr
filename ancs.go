@@ -175,14 +175,15 @@ func PrintSegsiteRanges(m map[int]bool, file *os.File) {
 }
 func SegToFasta(segments []Seg,
 	e *esa.Esa,
-	n map[int]bool) []*fasta.Sequence {
+	n map[int]bool,
+	printNs bool) []*fasta.Sequence {
 	var segfasta []*fasta.Sequence
 	for i, s := range segments {
 		start := s.s
 		end := s.End()
 		var data []byte
 		for j := start; j < end+1; j++ {
-			if n[j] {
+			if printNs && n[j] {
 				data = append(data, 'N')
 			} else {
 				data = append(data, e.T[j])
