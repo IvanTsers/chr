@@ -79,7 +79,6 @@ func FindHomologies(
 			prevStartS = currStartS
 		}
 		qc = qc + currLen + 1
-		fmt.Println()
 	}
 	//Close the last segment if open:
 	if rightAnchorFound || prevLen/2 >= a {
