@@ -37,8 +37,8 @@ func MinAncLen(l int, g float64, t float64) int {
 }
 func FindHomologies(
 	query *fasta.Sequence,
+	subject *fasta.Sequence,
 	e *esa.Esa,
-	subjectLen int,
 	a int) ([]Seg, map[int]bool) {
 	var qc, qp int
 	var currLen, currStartS int
@@ -47,12 +47,17 @@ func FindHomologies(
 	var h []Seg
 	n := make(map[int]bool)
 	rightAnchorFound := false
+	subjectLen := subject.Length()
 	subjectStrandLen := subjectLen / 2
 	queryLen := query.Length()
 	for qc < queryLen {
 		queryPrefix := query.Data()[qc:queryLen]
-		if anchorLongMatch(&currStartS, &currLen,
-			n, a, queryPrefix, e) {
+		if anchorLcp(&currStartS, &currLen,
+			prevStartS, prevLen,
+			subjectLen, queryLen, qc, qp,
+			n, a, queryPrefix, subject) ||
+			anchorEsa(&currStartS, &currLen,
+				n, a, queryPrefix, e) {
 			prevEndQ := qp + prevLen
 			prevEndS = prevStartS + prevLen
 			afterPrev := currStartS > prevEndS
@@ -122,7 +127,6 @@ func ReduceOverlaps(h []Seg) []Seg {
 			score[i] = h[i].l
 		}
 	}
-
 	// Debug messages. Will be removed in the future
 	//fmt.Println("***Homologies:")
 	//for _, el := range(h) {
@@ -151,7 +155,6 @@ func TotalSegLen(segments []Seg) int {
 }
 func PrintSegsiteRanges(m map[int]bool, file *os.File) {
 	if len(m) == 0 {
-		fmt.Fprintf(file, "No segregation sites found\n")
 	} else {
 		k := append([]int{-1}, getSortedIntKeys(m)...)
 		k = append(k, -1)
@@ -194,7 +197,37 @@ func SegToFasta(segments []Seg,
 	}
 	return segfasta
 }
-func anchorLongMatch(
+func anchorLcp(currStartS, currLen *int,
+	prevStartS, prevLen int,
+	subjectLen, queryLen int,
+	qc, qp int,
+	n map[int]bool,
+	a int,
+	queryPrefix []byte,
+	subject *fasta.Sequence) bool {
+	advance := qc - qp
+	gap := advance - prevLen
+	tryS := prevStartS + advance
+	if tryS >= subjectLen || gap > a {
+		return false
+	}
+	*currStartS = tryS
+	newCurrLen := lcp(queryLen,
+		queryPrefix, subject.Data()[tryS:])
+	*currLen = newCurrLen
+	return newCurrLen >= a
+}
+func lcp(max int, a, b []byte) int {
+	count := 0
+	for i := 0; i < max; i++ {
+		if i >= len(a) || i >= len(b) || a[i] != b[i] {
+			break
+		}
+		count++
+	}
+	return count
+}
+func anchorEsa(
 	currStartS, currLen *int,
 	n map[int]bool,
 	a int,

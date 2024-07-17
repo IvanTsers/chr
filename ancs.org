@@ -105,10 +105,10 @@ We import \ty{sus}.
 #+end_src
 #+begin_export latex
 \subsubsection{\ty{FindHomologies()}}
-!The function \ty{FindHomologies()} accepts a \ty{fasta} query
-!sequence, an enhanced suffix array and length of the subject sequence,
-!and the minimum anchor length \ty{a}. The function returns a slice of
-!segments (homologies) and a bool map of segregation sites.
+!The function \ty{FindHomologies()} accepts query and subject
+!sequences, an enhanced suffix array of the subject, and the minimum
+!anchor length \ty{a}. The function returns a slice of segments
+!(homologies) and a bool map of segregation sites.
 
 We initialize variables to operate with in the search of homologies,
 conduct the search, and return its results.
@@ -116,8 +116,8 @@ conduct the search, and return its results.
 #+begin_src go <<FindHomologies>>=
   func FindHomologies(
 	  query *fasta.Sequence,
+	  subject *fasta.Sequence,
 	  e *esa.Esa,
-	  subjectLen int,
 	  a int) ([]Seg, map[int]bool) {
 	  //<<Initialize search>>
 	  //<<Anchor search>>
@@ -142,14 +142,10 @@ We declare variables to operate with during the search. These are:
   \item a slice of segments to store the output in;
   \item a map to store positions of segregation sites (mismatches);
   \item an indicator of right anchor;
+  \item full length of the subject;
   \item length of a \ty{single strand} of the subject;
   \item length of the query.
 \end{itemize}
-
-As one might notice, we calculate the full subject's length before
-calling \ty{FindHomologies()}, and we calculate the query's length
-inside the function. This design is intentional, so the same subject
-can be compared to multiple queries.
 #+end_export
 #+begin_src go <<Initialize search>>=
   var qc, qp int
@@ -159,16 +155,26 @@ can be compared to multiple queries.
   var h []Seg
   n := make(map[int]bool)
   rightAnchorFound := false
+  subjectLen := subject.Length()
   subjectStrandLen := subjectLen/2
   queryLen := query.Length()
 #+end_src
 #+begin_export latex
 We perform anchor search for each prefix in our query. We get a prefix
 that starts at the current position and ends at the last byte of the
-query. Then we search for a long unique match using the function
-\ty{anchorLongMatch()}, which we still have to write.
+query. Then we search for an anchor. There are two scenarios: 1) there
+is a match that starts right after the last mismatch, 2) there is a
+'remote' match somewhere else. There are two functions to write for
+these scenarios. In the first case, we try to find the longest common
+prefix at the given positions in the query and the subject using the
+function \ty{anchorLcp()}. In the second case, we turn to the ESA and
+look for a match using the function \ty{anchorEsa()}. Both functions
+advance in the subject and update \ty{currStartS} and \ty{currLen},
+both functions return \ty{true} if a match is found.
 
-If such a match is found, we proceed with calculating the end
+We put both functions into a short-circuit evaluation, that is,
+\ty{anchorEsa} is called only if \ty{anchorLcp} has returned
+\ty{true}. If a match is found, we proceed with calculating the end
 positions of the previous match in the query and the subject. Then we
 analyze the current match and decide, whether the current segment can
 be extended with it. If yes, we extend the current segment. If it
@@ -181,7 +187,11 @@ prefix.
 #+begin_src go <<Anchor search>>=
   for qc < queryLen {
 	  queryPrefix := query.Data()[qc:queryLen]
-	  if anchorLongMatch(&currStartS, &currLen,
+	  if anchorLcp(&currStartS, &currLen,
+		  prevStartS, prevLen,
+		  subjectLen, queryLen, qc, qp,
+		  n, a, queryPrefix, subject) ||
+	     anchorEsa(&currStartS, &currLen,
 		  n, a, queryPrefix, e) {
 		  prevEndQ := qp + prevLen
 		  prevEndS = prevStartS + prevLen
@@ -208,7 +218,62 @@ prefix.
 
 #+end_src
 #+begin_export latex
-!The function \ty{anchorLongMatch()} accepts pointers to length of the
+The function \ty{anchorLcp()} accepts pointers to length of the
+current match and its start in the subject, a map of segregation
+sites, minimum anchor length, current query prefix, and a pointer to
+the subject. The function returns a boolean and updates the start and
+the length of the current match.
+
+We calculate the size of a gap between the current and previous
+position in the query, a position in the subject to try to match the
+longest common prefix (LCP) with. If the this position is beyound the
+end of the subject or if the gap is longer than the minimum anchor
+length (that is, not random), we return \ty{false} early. If not so,
+we update the current position in the subject and find the LCP at this
+position. Then we update the length of the current match with the
+length of the LCP. Should the latter satisfy the minimum anchor length
+threshold, we return \ty{true}.
+#+end_export
+#+begin_src go <<Functions>>=
+  func anchorLcp(currStartS, currLen *int,
+	  prevStartS, prevLen int,
+	  subjectLen, queryLen int,
+	  qc, qp int,
+	  n map[int]bool,
+	  a int,
+	  queryPrefix []byte,
+	  subject *fasta.Sequence) bool {
+	  advance := qc - qp
+	  gap := advance - prevLen
+	  tryS := prevStartS + advance
+	  if tryS >= subjectLen || gap > a {                          
+		  return false
+	  }
+	  *currStartS = tryS
+	  newCurrLen := lcp(queryLen,
+		  queryPrefix, subject.Data()[tryS:])
+	  *currLen = newCurrLen
+	  return newCurrLen >= a
+  }
+#+end_src
+#+begin_export latex
+The function \ty{lcp} accepts and returns length of the longest common
+prefix between two slices of bytes.
+#+end_export
+#+begin_src go <<Functions>>=
+  func lcp(max int, a, b []byte) int {
+      count := 0
+      for i := 0; i < max; i++ {
+	  if i >= len(a) || i >= len(b) || a[i] != b[i] {
+	      break
+	  }
+	  count++
+      }
+      return count
+  }
+#+end_src
+#+begin_export latex
+The function \ty{anchorEsa()} accepts pointers to length of the
 current match and its start in the subject, a map of segregation
 sites, minimum anchor length, current query prefix, and a pointer to
 the subject ESA. The function returns a boolean and updates the start
@@ -218,7 +283,7 @@ A match is unique if it starts and ends at the same position in an
 ESA. In terms of a suffix tree, a unique match ends on a leaf.
 #+end_export
 #+begin_src go <<Functions>>=
-  func anchorLongMatch(
+  func anchorEsa(
 	  currStartS, currLen *int,
 	  n map[int]bool,
 	  a int,
@@ -235,6 +300,7 @@ ESA. In terms of a suffix tree, a unique match ends on a leaf.
 	  return lu
   }
 #+end_src
+#+end_export
 #+begin_export latex
 We analyze if the match
 \begin{itemize}
@@ -377,7 +443,6 @@ chain ending before \ty{h[i]} starts, ensuring no overlap.
 	      score[i] = h[i].l
 	  }
   }
-
   // Debug messages. Will be removed in the future
   //fmt.Println("***Homologies:")
   //for _, el := range(h) {
