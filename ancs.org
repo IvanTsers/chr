@@ -1,7 +1,6 @@
 #+begin_export latex
 \section{Implementation}
-Package \ty{ancs} provides functions for finding anchors and
-processing homologies.
+Package \ty{ancs} has hooks for imports, data structures and methods.
 #+end_export
 #+begin_src go <<ancs.go>>=
   package ancs
@@ -14,9 +13,11 @@ processing homologies.
 #+end_src
 #+begin_export latex
 \subsection{Data structure \ty{Seg}}
-We declare a custom data type \ty{Seg} for storing segments of the
-forward strand of the subject. A segment has a start \ty{s} and a
-length \ty{l}.
+We declare a data type \ty{Seg} for storing segments of the forward
+strand of the subject.
+
+!Data type \ty{Seg} contains a zero-based start and length of a
+!segment.
 #+end_export
 #+begin_src go <<Data structures>>=
   type Seg struct {
@@ -26,21 +27,25 @@ length \ty{l}.
 #+end_src
 #+begin_export latex
 \subsection{Methods}
-\subsubsection{\ty{End()}}
-Method \ty{End()} returns an end of a segment.
+\subsubsection{\ty{End}}
+!Method \ty{End()} returns an inclusive coordinate of the end of a
+!segment.
+
+Thus, the package operates with zero-based end-inclusive coordinates.
 #+end_export
 #+begin_src go <<Methods>>=
   func (seg *Seg) End() int {
-	  return seg.s + seg.l - 1
+	  return seg.s + seg.l
   }
 #+end_src
 #+begin_export latex
-\subsubsection{\ty{NewSeg()}}
-Constructor method \ty{NewSeg()} returns an empty segment.
+\subsubsection{Method \ty{NewSeg}}
+!Constructor method \ty{NewSeg()} returns a segment of specified start
+!and length.
 #+end_export
 #+begin_src go <<Methods>>=
-  func NewSeg() Seg {
-	  return Seg{s:0, l:0}
+  func NewSeg(x, y int) Seg {
+	  return Seg{s:x, l:y}
   }
 #+end_src
 #+begin_export latex
@@ -49,7 +54,6 @@ The \ty{ancs} package contains a number of functions.
 #+end_export
 #+begin_src go <<Functions>>=
   //<<SortByStart>>
-  //<<MinAncLen>>
   //<<FindHomologies>>
   //<<ReduceOverlaps>>
   //<<TotalSegLen>>
@@ -57,8 +61,8 @@ The \ty{ancs} package contains a number of functions.
   //<<SegToFasta>>
 #+end_src
 #+begin_export latex
-\subsubsection{\ty{SortByStart()}}
-!\ty{SortByStart()} accepts a slice of segments \ty{s} and sorts the
+\subsubsection{\ty{SortByStart}}
+!\ty{SortByStart} accepts a slice of segments \ty{s} and sorts the
 !segments by their start positions in ascending order.
 #+end_export
 #+begin_src go <<SortByStart>>=
@@ -76,39 +80,13 @@ We import \ty{sort}.
   "sort"
 #+end_src
 #+begin_export latex
-\subsubsection{\ty{MinAncLen()}}
-An anchor is a unique non-random match. Its non-randomness is defined
-by its length. The threshold length, or the minimum anchor length, is
-found from the null shustring length distribution for a sequence with
-given length and GC content.
-
-!The function \ty{MinAncLen()} accepts length, GC content of a
-!sequence, and the threshold probability, and calculates the minimum
-!anchor length.
-#+end_export
-#+begin_src go <<MinAncLen>>=
-  func MinAncLen(l int, g float64, t float64) int {
-	  x := 1
-	  cq := 0.0 
-	  for cq < t {
-		  x++
-		  cq = cq + sus.Prob(l, g, x)
-	  }
-	  return x
-  }
-#+end_src
-#+begin_export latex
-We import \ty{sus}.
-#+end_export
-#+begin_src go <<Imports>>=
-  "github.com/evolbioinf/sus"
-#+end_src
-#+begin_export latex
-\subsubsection{\ty{FindHomologies()}}
-!The function \ty{FindHomologies()} accepts query and subject
-!sequences, an enhanced suffix array of the subject, and the minimum
-!anchor length \ty{a}. The function returns a slice of segments
-!(homologies) and a bool map of segregation sites.
+\subsubsection{\ty{FindHomologies}}
+!The function \ty{FindHomologies} accepts query and subject sequences,
+!an enhanced suffix array of the subject, and the minimum anchor
+!length \ty{a}. The function returns a slice of segments (homologous
+!regions, or homologies) and a bool map of segregation sites found
+!within the homologies. If no homologies have been found, an empty
+!slice of segments and empty map of segregation sites are returned.
 
 We initialize variables to operate with in the search of homologies,
 conduct the search, and return its results.
@@ -141,7 +119,7 @@ We declare variables to operate with during the search. These are:
   \item current segment;
   \item a slice of segments to store the output in;
   \item a map to store positions of segregation sites (mismatches);
-  \item an indicator of right anchor;
+  \item an indicator of the right anchor;
   \item full length of the subject;
   \item length of a \ty{single strand} of the subject;
   \item length of the query.
@@ -154,7 +132,7 @@ We declare variables to operate with during the search. These are:
   var seg Seg
   var h []Seg
   n := make(map[int]bool)
-  rightAnchorFound := false
+  rightAnchor := false
   subjectLen := subject.Length()
   subjectStrandLen := subjectLen/2
   queryLen := query.Length()
@@ -164,82 +142,90 @@ We perform anchor search for each prefix in our query. We get a prefix
 that starts at the current position and ends at the last byte of the
 query. Then we search for an anchor. There are two scenarios: 1) there
 is a match that starts right after the last mismatch, 2) there is a
-'remote' match somewhere else. There are two functions to write for
-these scenarios. In the first case, we try to find the longest common
-prefix at the given positions in the query and the subject using the
-function \ty{anchorLcp()}. In the second case, we turn to the ESA and
-look for a match using the function \ty{anchorEsa()}. Both functions
+'remote' match somewhere else. There are two functions to be
+written.
+
+In the first case, we try to find the longest common prefix at the
+given positions in the query and the subject using the function
+\ty{anchorLcp}. In the second case, we turn to the ESA and look for a
+matching suffix using the function \ty{anchorEsa}. Both functions
 advance in the subject and update \ty{currStartS} and \ty{currLen},
-both functions return \ty{true} if a match is found.
+both functions return \ty{true} if a legitimate match is found.
 
 We put both functions into a short-circuit evaluation, that is,
 \ty{anchorEsa} is called only if \ty{anchorLcp} has returned
-\ty{true}. If a match is found, we proceed with calculating the end
+\ty{false}. If a match is found, we proceed with calculating the end
 positions of the previous match in the query and the subject. Then we
 analyze the current match and decide, whether the current segment can
-be extended with it. If yes, we extend the current segment. If it
+be extended with it. If so, we extend the current segment. If it
 cannot be extended and the right anchor is found, we open a new
 segment and save the current one in \ty{h}. After these operations, we
 remember the current match and jump in the query by at least one
-nucleotide (a guaranteed mismatch) before proceeding with the next
-prefix.
+nucleotide, which is most likely to be a mutation. Then we proceed
+with the next prefix.
 #+end_export
 #+begin_src go <<Anchor search>>=
   for qc < queryLen {
 	  queryPrefix := query.Data()[qc:queryLen]
-	  if anchorLcp(&currStartS, &currLen,
-		  prevStartS, prevLen,
-		  subjectLen, queryLen, qc, qp,
-		  n, a, queryPrefix, subject) ||
-	     anchorEsa(&currStartS, &currLen,
-		  n, a, queryPrefix, e) {
-		  prevEndQ := qp + prevLen
-		  prevEndS = prevStartS + prevLen
-		  //<<Analyze the match>>
-		  if segCanBeExtended {
+	  if <<LCP anchor>> || <<ESA anchor>> {
+	  prevEndQ := qp + prevLen
+	  prevEndS = prevStartS + prevLen
+	  //<<Analyze the match>>
+	  if segCanBeExtended {
 		  //<<Extend the current segment>>
-		  } else {
-			  if rightAnchorFound || prevLen / 2 >= a {
-				  //<<Close the current segment>>
-			  }
-			  //<<Open a new segment>>
+	  } else {
+		  if rightAnchor || prevLen / 2 >= a {
+			  //<<Close the current segment>>
 		  }
-		  //<<Remember the current match>>
+		  //<<Open a new segment>>
 	  }
-	  qc = qc + currLen + 1
+	  //<<Remember the current match>>
+  }
+  qc = qc + currLen + 1
   }
   //Close the last segment if open:
-  if rightAnchorFound || prevLen / 2 >= a {
-	  if seg.s > subjectStrandLen {
-		  seg.s = subjectLen + 1 - seg.s - seg.l
-	  }
-	  h = append(h, seg)
+  if rightAnchor || prevLen / 2 >= a {
+  if seg.s > subjectStrandLen {
+	  seg.s = subjectLen + 1 - seg.s - seg.l
   }
-
+  h = append(h, seg)
+  }
 #+end_src
 #+begin_export latex
-The function \ty{anchorLcp()} accepts pointers to length of the
-current match and its start in the subject, a map of segregation
-sites, minimum anchor length, current query prefix, and a pointer to
-the subject. The function returns a boolean and updates the start and
-the length of the current match.
+We call \ty{lcpAnchor} with numerous arguments. The funtion itself is
+yet to be written.
+#+end_export
+#+begin_src go <<LCP anchor>>=
+  lcpAnchor(&currStartS, &currLen,
+	  prevStartS, prevLen,
+	  subjectLen, queryLen, qc, qp,
+	  a, queryPrefix, subject)
+#+end_src
+#+begin_export latex
+!The function \ty{lcpAnchor} accepts the following inputs: 1) pointer
+!to the current match length; 2) start of the current match in the
+!subject; 3) a map of segregation sites; 4) the minimum anchor length;
+!5) the current query prefix; 6) a pointer to the subject. The
+!function returns a boolean. Regardless of the significance of the
+!match, the function updates the start and the length of the current
+!match.
 
-We calculate the size of a gap between the current and previous
-position in the query, a position in the subject to try to match the
-longest common prefix (LCP) with. If the this position is beyound the
-end of the subject or if the gap is longer than the minimum anchor
-length (that is, not random), we return \ty{false} early. If not so,
-we update the current position in the subject and find the LCP at this
-position. Then we update the length of the current match with the
-length of the LCP. Should the latter satisfy the minimum anchor length
-threshold, we return \ty{true}.
+First, the function calculates the gap between the current and
+previous positions in the query, and determines a position in the
+subject to attempt matching the longest common prefix (LCP). If this
+position is beyond the end of the subject or if the gap is larger than
+the minimum anchor length (meaning it's not random), the function
+returns \ty{false}. Otherwise, it updates the position in the subject
+and finds the LCP length at this position. The length of the current
+match is then updated with the found length. If this length meets the
+minimum anchor length requirement, the match is considered
+significant, and the function returns \ty{true}.
 #+end_export
 #+begin_src go <<Functions>>=
-  func anchorLcp(currStartS, currLen *int,
+  func lcpAnchor(currStartS, currLen *int,
 	  prevStartS, prevLen int,
 	  subjectLen, queryLen int,
 	  qc, qp int,
-	  n map[int]bool,
 	  a int,
 	  queryPrefix []byte,
 	  subject *fasta.Sequence) bool {
@@ -257,8 +243,8 @@ threshold, we return \ty{true}.
   }
 #+end_src
 #+begin_export latex
-The function \ty{lcp} accepts and returns length of the longest common
-prefix between two slices of bytes.
+The function \ty{lcp} returns length of the longest common prefix
+of two slices of bytes.
 #+end_export
 #+begin_src go <<Functions>>=
   func lcp(max int, a, b []byte) int {
@@ -272,20 +258,25 @@ prefix between two slices of bytes.
       return count
   }
 #+end_src
+#+begin_src go <<ESA anchor>>=
+  esaAnchor(&currStartS, &currLen, a, queryPrefix, e)
+#+end_src
 #+begin_export latex
-The function \ty{anchorEsa()} accepts pointers to length of the
-current match and its start in the subject, a map of segregation
-sites, minimum anchor length, current query prefix, and a pointer to
-the subject ESA. The function returns a boolean and updates the start
-and the length of the current match.
+!The function \ty{anchorEsa()} accepts: 1) a pointer to the current
+!match length; 2) start of the match the subject; 3) a map of
+!segregation sites; 4) the minimum anchor length; 5) the current query
+!prefix; 6) a pointer to the subject ESA. The function returns a
+!boolean. Regardless of the significance of the match, the function
+!updates the start and the length of the current match.
 
-A match is unique if it starts and ends at the same position in an
-ESA. In terms of a suffix tree, a unique match ends on a leaf.
+A match is considered significant if it is unique and not shorter than
+the minimum anchor length. A match is unique if it starts and ends at
+the same position in an ESA. In terms of a suffix tree, a unique match
+ends on a leaf.
 #+end_export
 #+begin_src go <<Functions>>=
-  func anchorEsa(
+  func esaAnchor(
 	  currStartS, currLen *int,
-	  n map[int]bool,
 	  a int,
 	  queryPrefix []byte,
 	  e *esa.Esa) bool {
@@ -294,15 +285,13 @@ ESA. In terms of a suffix tree, a unique match ends on a leaf.
 	  newCurrLen := mc.L
 	  *currStartS = newStartS
 	  *currLen = newCurrLen
-	  //Add the guaranteed mismatch to the segsite map
-	  n[newStartS + newCurrLen] = true
 	  lu := (mc.J == mc.I) && (newCurrLen >= a)
 	  return lu
   }
 #+end_src
 #+end_export
 #+begin_export latex
-We analyze if the match
+We analyze if the match:
 \begin{itemize}
   \itemsep0em
   \item starts in the subject after the previous match;
@@ -316,10 +305,15 @@ extendible.
 #+end_export
 #+begin_src go <<Analyze the match>>=
   afterPrev := currStartS > prevEndS
+
   areEquidist := qc - prevEndQ == currStartS - prevEndS
+
   onSameStrand := (currStartS < subjectStrandLen) ==
-	  (prevStartS < subjectStrandLen)
-  segCanBeExtended := afterPrev && areEquidist && onSameStrand
+		  (prevStartS < subjectStrandLen)
+
+  segCanBeExtended := afterPrev &&
+		      areEquidist &&
+		      onSameStrand
 #+end_src
 #+begin_export latex
 We extend the segment to the end of the new anchor and add positions
@@ -328,8 +322,18 @@ the map of mismatches as keys. We also remember that we have just
 found a new right anchor.
 #+end_export
 #+begin_src go <<Extend the current segment>>=
-  seg.l = seg.l + qc - prevEndQ + currLen
-  rightAnchorFound = true
+  prevSegEnd := seg.End()
+  gap := qc - prevEndQ
+  seg.l = seg.l + gap + currLen
+  a := subject.Data()[prevSegEnd:prevSegEnd + gap]
+  b := query.Data()[prevEndQ:prevEndQ + gap]
+
+  for i := 0; i < gap; i++ {
+	  if a[i] != b[i] {
+		  n[prevSegEnd + i] = true
+	  }
+  }
+  rightAnchor = true
 #+end_src
 #+begin_export latex
 To close the current segment is to project it onto the forward strand
@@ -348,7 +352,7 @@ the right anchor was found.
 #+begin_src go <<Open a new segment>>=
   seg.s = currStartS
   seg.l = currLen
-  rightAnchorFound = false
+  rightAnchor = false
 #+end_src
 #+begin_export latex
 We update previous position in the query and the previous match.
@@ -360,17 +364,14 @@ We update previous position in the query and the previous match.
 #+end_src
 #+begin_export latex
 We return the output of \ty{FindHomologies()} if the slice of
-homologies is not empty. If it is, we notify the user and exit.
+homologies is not empty. If it is empty, we return an empty slice of
+segments and empty \ty{n}.
 #+end_export
 #+begin_src go <<Return the output>>=
-  if len(h) == 0 {
-	  fmt.Fprintln(os.Stderr, "No homologous regions found\n")
-	  os.Exit(0)
-  }
   return h, n
 #+end_src
 #+begin_export latex
-\subsubsection{\ty{ReduceOverlaps()}}
+\subsubsection{\ty{ReduceOverlaps}}
 !\ty{ReduceOverlaps()} accepts a sorted slice of segments
 (homologies) and returns a slice of segments, which contains the
 longest chain of non-overlapping homologies.
@@ -451,21 +452,14 @@ chain ending before \ty{h[i]} starts, ensuring no overlap.
   //fmt.Println("***Scores:", score)
 #+end_src
 #+begin_export latex
-Now that we have scores for all homologies, we can find \ty{s}, the
-index of an element of \texttt{h} with the highest score. This element
-is the final link of the chain we are looking for, and its score is
-the total score of it. To find \ty{s}, we use the function
-\ty{argmaxMapInt()}, which we still have to write. Then we backtrack
-through the predecessor links and mark visited homologies.
-
-Now that we have calculated the scores for all homologies, we need to
-find \ty{s}, the index of the homology in \texttt{h} with the highest
-score. This homology represents the final link in the chain we are
-looking for, and its score reflects the total score of the chain. To
-find \ty{s}, we use the function \ty{argmax()}, which we still have to
-write. After identifying \ty{s}, we backtrack through the
-\ty{predecessor} links to trace the entire chain and mark the
-corresponding homologies as visited.
+After calculating the scores for all homologies, we need to find
+\ty{s}, which is the index of the homology in \texttt{h} with the
+highest score. This homology is the final link in the chain we're
+looking for, and its score is the total score of the chain. To find
+\ty{s}, we'll use the \ty{argmaxMapInt()} function, which still needs
+to be written. Once we identify \ty{s}, we backtrack through the
+predecessor links to trace the entire chain and mark the homologies as
+visited.
 #+end_export
 #+begin_src go <<Backtrack the chain>>=
   s := argmax(score)
@@ -516,33 +510,23 @@ slice.
   }
 #+end_src
 #+begin_export latex
-\subsubsection{\ty{PrintSegSiteRanges()}}
+\subsubsection{\ty{PrintSegSiteRanges}}
 !\ty{PrintSegSiteRanges()} accepts a bool map of Ns (segregation
-!sites), a pointer to an output file, and prints their coordinate
-!ranges.
+!sites), a slice of segments, and a pointer to an output file, and
+!prints segregation site coordinate ranges.
+
+Segregation sites make sense only in the context of homologous
+regions, so we print only sites found within a homologous segment.
 #+end_export
 #+begin_src go <<PrintSegSiteRanges>>=
-  func PrintSegsiteRanges(m map[int]bool, file *os.File) {
-	  if len(m) == 0 {
+  func PrintSegsiteRanges(n map[int]bool,
+	  h []Seg, file *os.File) {
+	  if len(n) == 0 {
 		  fmt.Fprintf(file, "No segregation sites found\n")
 	  } else {
-		  k := append([]int{-1}, getSortedIntKeys(m)...)
-		  k = append(k, -1)
-		  for i := 1; i < len(k) - 1; i++ {
-			  prev := k[i] == k[i-1]+1
-			  next := k[i] == k[i+1]-1
-			  if prev && next {
-				  continue
-			  }
-			  if next {
-				  fmt.Fprintf(file, "[%d", k[i]+1)
-			  } else if prev {
-				  fmt.Fprintf(file, ":%d] ", k[i]+1)
-			  } else {
-				  fmt.Fprintf(file, "%d ", k[i]+1)
-			  }
+		  for _, seg := range h {
+			  //<<Print segsites found within a homology>>
 		  }
-		  fmt.Fprintf(file, "\n")
 	  }
   }
 #+end_src
@@ -554,20 +538,55 @@ We import \ty{os} and \ty{fmt}.
   "fmt"
 #+end_src
 #+begin_export latex
-We define \ty{getSortedKeys()}.
+We extract the relevant positions and store them in the slice
+\ty{k}. Then we scan the slice for ranges.
 #+end_export
-#+begin_src go <<Functions>>=
-  func getSortedIntKeys(m map[int]bool) []int {
-	  keys := make([]int, 0, len(m))
-	  for k, _ := range m {
-		  keys = append(keys, k)
+#+begin_src go <<Print segsites found within a homology>>=
+  //<<Extract relevant positions>>
+  for i := 1; i < len(k) - 1; i++ {
+	  //<<Scan for segsite ranges>>
+  }
+  fmt.Fprintf(file, "\n")
+#+end_src
+#+begin_export latex
+We traverse \ty{n} from the start to the end of the current homology,
+find existing keys, convert them to 1-based coordinates \textit{on the
+  given homology}, and save the coordinate in a slice. We flank the
+slice of those keys with \ty{-1}.
+#+end_export
+#+begin_src go <<Extract relevant positions>>=
+  k := []int{-1}
+  for i := seg.s; i < seg.End(); i++ {
+	  if n[i] {
+		  k = append(k, i - seg.s + 1)
 	  }
-	  sort.Ints(keys)
-	  return keys
+  }
+  k = append(k, -1)
+#+end_src
+#+begin_export latex
+We check if \ty{k[i]} is surrounded by a preceding and consecutive
+numbers. We format the output depending on the combination of possible
+outcomes. If \ty{k[i]} is surrounded by such numbers, we proceed to
+\ty{k[i]}. If the consecutive value exists, we open square
+brackets. Should the previous, but not the next value exist, we close
+brackets. If there are no next and previous values, we print \ty{k[i]}.
+#+end_export
+#+begin_src go <<Scan for segsite ranges>>=
+  prev := k[i] == k[i-1]+1
+  next := k[i] == k[i+1]-1
+  if prev && next {
+	  continue
+  }
+  if next {
+	  fmt.Fprintf(file, "[%d", k[i]+1)
+  } else if prev {
+	  fmt.Fprintf(file, ":%d] ", k[i]+1)
+  } else {
+	  fmt.Fprintf(file, "%d ", k[i]+1)
   }
 #+end_src
 #+begin_export latex
-\subsubsection{\ty{SegToFasta()}}
+\subsubsection{\ty{SegToFasta}}
 !\ty{SegToFasta()} converts a slice of segments into actual fasta
 !sequences. It accepts a slice of segments, a pointer to the
 !corresponding ESA, a map of Ns, and a \ty{bool} toggle for printing
@@ -584,7 +603,7 @@ We define \ty{getSortedKeys()}.
 		  start := s.s
 		  end := s.End()
 		  var data []byte
-		  for j := start; j < end + 1; j++ {
+		  for j := start; j < end; j++ {
 			  if printNs && n[j] {
 				  data = append(data, 'N')
 			  } else {

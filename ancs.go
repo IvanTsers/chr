@@ -3,38 +3,36 @@ package ancs
 import (
 	"fmt"
 	"github.com/evolbioinf/esa"
-	"github.com/evolbioinf/sus"
 	"github.com/ivantsers/fasta"
 	"os"
 	"sort"
 )
 
+// Data type Seg contains a zero-based start and length of a segment.
 type Seg struct {
 	s int
 	l int
 }
 
+// Method End() returns an inclusive coordinate of the end of a segment.
 func (seg *Seg) End() int {
-	return seg.s + seg.l - 1
+	return seg.s + seg.l
 }
-func NewSeg() Seg {
-	return Seg{s: 0, l: 0}
+
+// Constructor method NewSeg() returns a segment of specified start and length.
+func NewSeg(x, y int) Seg {
+	return Seg{s: x, l: y}
 }
+
+// SortByStart accepts a slice of segments s and sorts the segments by their start positions in ascending order.
 func SortByStart(s []Seg) []Seg {
 	sort.Slice(s, func(i, j int) bool {
 		return s[i].s < s[j].s
 	})
 	return s
 }
-func MinAncLen(l int, g float64, t float64) int {
-	x := 1
-	cq := 0.0
-	for cq < t {
-		x++
-		cq = cq + sus.Prob(l, g, x)
-	}
-	return x
-}
+
+// The function FindHomologies accepts query and subject sequences, an enhanced suffix array of the subject, and the minimum anchor length a. The function returns a slice of segments (homologous regions, or homologies) and a bool map of segregation sites found within the homologies. If no homologies have been found, an empty slice of segments and empty map of segregation sites are returned.
 func FindHomologies(
 	query *fasta.Sequence,
 	subject *fasta.Sequence,
@@ -46,30 +44,43 @@ func FindHomologies(
 	var seg Seg
 	var h []Seg
 	n := make(map[int]bool)
-	rightAnchorFound := false
+	rightAnchor := false
 	subjectLen := subject.Length()
 	subjectStrandLen := subjectLen / 2
 	queryLen := query.Length()
 	for qc < queryLen {
 		queryPrefix := query.Data()[qc:queryLen]
-		if anchorLcp(&currStartS, &currLen,
+		if lcpAnchor(&currStartS, &currLen,
 			prevStartS, prevLen,
 			subjectLen, queryLen, qc, qp,
-			n, a, queryPrefix, subject) ||
-			anchorEsa(&currStartS, &currLen,
-				n, a, queryPrefix, e) {
+			a, queryPrefix, subject) || esaAnchor(&currStartS, &currLen, a, queryPrefix, e) {
 			prevEndQ := qp + prevLen
 			prevEndS = prevStartS + prevLen
 			afterPrev := currStartS > prevEndS
+
 			areEquidist := qc-prevEndQ == currStartS-prevEndS
+
 			onSameStrand := (currStartS < subjectStrandLen) ==
 				(prevStartS < subjectStrandLen)
-			segCanBeExtended := afterPrev && areEquidist && onSameStrand
+
+			segCanBeExtended := afterPrev &&
+				areEquidist &&
+				onSameStrand
 			if segCanBeExtended {
-				seg.l = seg.l + qc - prevEndQ + currLen
-				rightAnchorFound = true
+				prevSegEnd := seg.End()
+				gap := qc - prevEndQ
+				seg.l = seg.l + gap + currLen
+				a := subject.Data()[prevSegEnd : prevSegEnd+gap]
+				b := query.Data()[prevEndQ : prevEndQ+gap]
+
+				for i := 0; i < gap; i++ {
+					if a[i] != b[i] {
+						n[prevSegEnd+i] = true
+					}
+				}
+				rightAnchor = true
 			} else {
-				if rightAnchorFound || prevLen/2 >= a {
+				if rightAnchor || prevLen/2 >= a {
 					if seg.s > subjectStrandLen {
 						seg.s = subjectLen + 1 - seg.s - seg.l
 					}
@@ -77,7 +88,7 @@ func FindHomologies(
 				}
 				seg.s = currStartS
 				seg.l = currLen
-				rightAnchorFound = false
+				rightAnchor = false
 			}
 			qp = qc
 			prevLen = currLen
@@ -86,19 +97,16 @@ func FindHomologies(
 		qc = qc + currLen + 1
 	}
 	//Close the last segment if open:
-	if rightAnchorFound || prevLen/2 >= a {
+	if rightAnchor || prevLen/2 >= a {
 		if seg.s > subjectStrandLen {
 			seg.s = subjectLen + 1 - seg.s - seg.l
 		}
 		h = append(h, seg)
 	}
-
-	if len(h) == 0 {
-		fmt.Fprintln(os.Stderr, "No homologous regions found\n")
-		os.Exit(0)
-	}
 	return h, n
 }
+
+// ReduceOverlaps() accepts a sorted slice of segments
 func ReduceOverlaps(h []Seg) []Seg {
 	hlen := len(h)
 	if hlen < 2 {
@@ -146,6 +154,8 @@ func ReduceOverlaps(h []Seg) []Seg {
 	}
 	return hred
 }
+
+// \ty(TotalSegLen()) accepts a slice of segments and returns their total length.
 func TotalSegLen(segments []Seg) int {
 	sumlen := 0
 	for _, s := range segments {
@@ -153,28 +163,41 @@ func TotalSegLen(segments []Seg) int {
 	}
 	return sumlen
 }
-func PrintSegsiteRanges(m map[int]bool, file *os.File) {
-	if len(m) == 0 {
+
+// PrintSegSiteRanges() accepts a bool map of Ns (segregation sites), a slice of segments, and a pointer to an output file, and prints segregation site coordinate ranges.
+func PrintSegsiteRanges(n map[int]bool,
+	h []Seg, file *os.File) {
+	if len(n) == 0 {
+		fmt.Fprintf(file, "No segregation sites found\n")
 	} else {
-		k := append([]int{-1}, getSortedIntKeys(m)...)
-		k = append(k, -1)
-		for i := 1; i < len(k)-1; i++ {
-			prev := k[i] == k[i-1]+1
-			next := k[i] == k[i+1]-1
-			if prev && next {
-				continue
+		for _, seg := range h {
+			k := []int{-1}
+			for i := seg.s; i < seg.End(); i++ {
+				if n[i] {
+					k = append(k, i-seg.s+1)
+				}
 			}
-			if next {
-				fmt.Fprintf(file, "[%d", k[i]+1)
-			} else if prev {
-				fmt.Fprintf(file, ":%d] ", k[i]+1)
-			} else {
-				fmt.Fprintf(file, "%d ", k[i]+1)
+			k = append(k, -1)
+			for i := 1; i < len(k)-1; i++ {
+				prev := k[i] == k[i-1]+1
+				next := k[i] == k[i+1]-1
+				if prev && next {
+					continue
+				}
+				if next {
+					fmt.Fprintf(file, "[%d", k[i]+1)
+				} else if prev {
+					fmt.Fprintf(file, ":%d] ", k[i]+1)
+				} else {
+					fmt.Fprintf(file, "%d ", k[i]+1)
+				}
 			}
+			fmt.Fprintf(file, "\n")
 		}
-		fmt.Fprintf(file, "\n")
 	}
 }
+
+// SegToFasta() converts a slice of segments into actual fasta sequences. It accepts a slice of segments, a pointer to the corresponding ESA, a map of Ns, and a bool toggle for printing Ns. It returns a slice of pointers to fasta entries (type fasta.Sequence).
 func SegToFasta(segments []Seg,
 	e *esa.Esa,
 	n map[int]bool,
@@ -184,7 +207,7 @@ func SegToFasta(segments []Seg,
 		start := s.s
 		end := s.End()
 		var data []byte
-		for j := start; j < end+1; j++ {
+		for j := start; j < end; j++ {
 			if printNs && n[j] {
 				data = append(data, 'N')
 			} else {
@@ -197,11 +220,12 @@ func SegToFasta(segments []Seg,
 	}
 	return segfasta
 }
-func anchorLcp(currStartS, currLen *int,
+
+// The function lcpAnchor accepts the following inputs: 1) pointer to the current match length; 2) start of the current match in the subject; 3) a map of segregation sites; 4) the minimum anchor length; 5) the current query prefix; 6) a pointer to the subject. The function returns a boolean. Regardless of the significance of the match, the function updates the start and the length of the current match.
+func lcpAnchor(currStartS, currLen *int,
 	prevStartS, prevLen int,
 	subjectLen, queryLen int,
 	qc, qp int,
-	n map[int]bool,
 	a int,
 	queryPrefix []byte,
 	subject *fasta.Sequence) bool {
@@ -227,9 +251,10 @@ func lcp(max int, a, b []byte) int {
 	}
 	return count
 }
-func anchorEsa(
+
+// The function anchorEsa() accepts: 1) a pointer to the current match length; 2) start of the match the subject; 3) a map of segregation sites; 4) the minimum anchor length; 5) the current query prefix; 6) a pointer to the subject ESA. The function returns a boolean. Regardless of the significance of the match, the function updates the start and the length of the current match.
+func esaAnchor(
 	currStartS, currLen *int,
-	n map[int]bool,
 	a int,
 	queryPrefix []byte,
 	e *esa.Esa) bool {
@@ -238,8 +263,6 @@ func anchorEsa(
 	newCurrLen := mc.L
 	*currStartS = newStartS
 	*currLen = newCurrLen
-	//Add the guaranteed mismatch to the segsite map
-	n[newStartS+newCurrLen] = true
 	lu := (mc.J == mc.I) && (newCurrLen >= a)
 	return lu
 }
@@ -251,12 +274,4 @@ func argmax(x []int) int {
 		}
 	}
 	return maxIdx
-}
-func getSortedIntKeys(m map[int]bool) []int {
-	keys := make([]int, 0, len(m))
-	for k, _ := range m {
-		keys = append(keys, k)
-	}
-	sort.Ints(keys)
-	return keys
 }

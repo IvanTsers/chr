@@ -1,0 +1,386 @@
+#+begin_export latex
+\section{Testing}
+We import the \texttt{testing} package and add hooks for further
+imports and functions.
+#+end_export
+#+begin_src go <<ancs_test.go>>=
+  package ancs
+  import (
+	  "testing"
+	  //<<Testing imports>>
+  )
+  //<<Auxillary functions>>
+  //<<Testing functions>>
+#+end_src
+#+begin_export latex
+\subsection{Method \texttt{Seg}}
+We create a segment and test its behaviour. We find the end of the new
+segment, extend the segment by 10 and return the new length.
+#+end_export
+#+begin_src go <<Testing functions>>=
+  func TestSeg(t *testing.T) {
+	  seg := NewSeg(1, 10)
+	  want := 11
+	  get := seg.End()
+	  if get != want {
+		  t.Errorf("want:\n%d\nget:\n%d\n",
+			  want, get)
+	  }
+	  seg.l += 10
+	  want += 10
+	  get = seg.End()
+	  if get != want {
+		  t.Errorf("want:\n%d\nget:\n%d\n",
+			  want, get)
+	  }
+  }
+#+end_src
+#+begin_export latex
+\subsection{\ty{SortByStart}}
+To test \ty{SortByStart}, we generate pseudorandom segments, sort the
+segments, and compare actual and expected values. Thereafter, we test
+edge cases.
+#+end_export
+#+begin_src go <<Testing functions>>=
+  func TestSortByStart(t *testing.T) {
+	  //<<Generate pseudorandom segments>>
+	  //<<Sort the segments and compare values>>
+	  //<<Edge case segments>>
+  }
+#+end_src
+#+begin_export latex
+We generate two arrays of pseudorandom integers and use them to
+initialize a dozen of new segments. We re-seed the generator every
+time.
+#+end_export
+#+begin_src go <<Generate pseudorandom segments>>=
+  var starts []int
+  var segments []Seg
+  for i := 0; i < 12; i++ {
+	  rand.Seed(time.Now().UnixNano())
+	  rs := rand.Intn(1000000000)
+	  rl := 1 + rand.Intn(999999999)
+	  starts = append(starts, rs)
+	  segments = append(segments, NewSeg(rs, rl))
+  }
+#+end_src
+#+begin_export latex
+We import \ty{rand} and \ty{time}.
+#+end_export
+#+begin_src go <<Testing imports>>=
+  "math/rand"
+  "time"
+#+end_src
+#+begin_export latex
+We sort the segments using \ty{SortByStart} and the starts using the
+{sort.Ints} function from the default \ty{Go} package. Then we compare
+the first, the median, and the last element.
+#+end_export
+#+begin_src go <<Sort the segments and compare values>>=
+  sorted := SortByStart(segments)
+  sort.Ints(starts)
+  for _, i := range([3]int{0, 5, 11}) {
+	  want := starts[i]
+	  get := sorted[i].s
+	  if want != get {
+		  t.Errorf("want:\n%d\nget:\n%d\n",
+		  want, get)
+	  }
+  }
+#+end_src
+#+begin_export latex
+We import \ty{sort}.
+#+end_export
+#+begin_src go <<Testing imports>>=
+  "sort"
+#+end_src
+#+begin_export latex
+Edge case slices of segments include:
+\begin{itemize}
+  \itemsep0em
+\item an empty slice;
+\item a slice of single element;
+\item a slice of identical elements;
+\item an already sorted slice.
+\end{itemize}
+To test these, we declare a struct of test cases and iterate over it.
+#+end_export
+#+begin_src go <<Edge case segments>>=
+  x := NewSeg(12, 221)
+  testCases := []struct {
+	  name string
+	  input []Seg
+	  want []Seg
+  }{
+	  {"Empty", []Seg{}, []Seg{}},
+	  {"Single element", []Seg{x},[]Seg{x}},
+	  {"Identical", []Seg{x, x, x, x}, []Seg{x, x, x, x}},
+	  {"Already sorted", sorted, sorted},	
+  }
+
+  for _, tc := range testCases {
+	  //<<Run sort test case>>
+  }
+#+end_src
+#+begin_export latex
+We test \ty{SortByStart} and compare the results to the expected
+values.
+#+end_export
+#+begin_src go <<Run sort test case>>=
+  t.Run(tc.name, func(t *testing.T) {
+	  inputCopy := make([]Seg, len(tc.input))
+	  copy(inputCopy, tc.input)
+	  get := SortByStart(inputCopy)
+	  if !reflect.DeepEqual(get, tc.want) {
+		  t.Errorf("want:\n%v\nget:\n%v\n",
+			  tc.want, get)
+	  }
+  })
+#+end_src
+#+begin_export latex
+We import \ty{reflect}.
+#+end_export
+#+begin_src go <<Testing imports>>=
+  "reflect"
+#+end_src
+#+begin_export latex
+\subsection{\ty{ReduceOverlaps}}
+We create a number of segments to test \ty{ReduceOverlaps}, create a
+struct of test cases, and tun the tests.
+#+end_export
+#+begin_src go <<Testing functions>>=
+  func TestReduceOverlaps(t *testing.T) {
+	  //<<Declare test segments>>
+	  testCases := []struct {
+		  name string
+		  input []Seg
+		  want []Seg
+	  }{
+		  //<<Test cases for TestReduceOverlaps>>
+	  }
+		  for _, tc := range testCases {
+			  //<<Run TestReduceOverlaps test case>>
+		  }
+  }
+#+end_src
+#+begin_export latex
+We declare ten test segments.
+#+end_export
+#+begin_src go <<Declare test segments>>=
+  x := NewSeg(0, 10)
+  y := NewSeg(5, 10)
+  z := NewSeg(5, 20)
+  a := NewSeg(21, 2)
+  b := NewSeg(25, 5)
+  c := NewSeg(27, 1)
+  d := NewSeg(30, 5)
+  e := NewSeg(35, 10)
+  f := NewSeg(50, 2)
+  g := NewSeg(0, 5)
+#+end_src
+#+begin_export latex
+We describe the test cases:
+\begin{itemize}
+  \itemsep0em
+\item an empty input;
+\item one homology;
+\item two non-overlapping homologies;
+\item two perfectly overlapping homologies;
+\item two partially overlapping homologies of same length;
+\item two partially overlapping homologies of different length;
+\item a set of sorted ten homologies combining the prevous three cases.
+\end{itemize}
+#+end_export
+#+begin_src go <<Test cases for TestReduceOverlaps>>=
+  {"Empty", []Seg{}, []Seg{}},
+  {"Sinlge", []Seg{x}, []Seg{x}},
+  {"Perfect overlap", []Seg{x, x}, []Seg{x}},
+  {"Partial overlap same len", []Seg{x, y}, []Seg{x}},
+  {"Partial overlap diff len", []Seg{x, z}, []Seg{z}},
+  {"Various", []Seg{g, x, y, z, a, b, c, d, e, f},
+	  []Seg{z, c, e, f}},
+#+end_src
+#+begin_export latex
+We run the tests and compare the actual output to the expected values.
+#+end_export
+#+begin_src go <<Run TestReduceOverlaps test case>>=
+  t.Run(tc.name, func(t *testing.T) {
+	  inputCopy := make([]Seg, len(tc.input))
+	  copy(inputCopy, tc.input)
+	  get := ReduceOverlaps(inputCopy)
+	  if !reflect.DeepEqual(get, tc.want) {
+		  t.Errorf("\nwant:\n%v\nget:\n%v\n", tc.want, get)
+	  }
+  })
+#+end_src
+#+begin_export latex
+\subsection{\ty{FindHomologies}}
+We test isolated \ty{FindHomologies} on several test sequences. Test
+cases combine two parameters: 1) number of contigs in subject and
+query, and 2) number of matching regions.  We define the test cases
+and iterate over them.
+#+end_export
+#+begin_src go <<Testing functions>>=
+  func TestFindHomologies (t *testing.T) {
+	  //<<Desired FindHomology outputs>>
+	  testCases := []struct {
+		  name string
+		  input string
+		  want []*fasta.Sequence
+	  }{
+		  //<<Test cases for TestFindHomologies>>
+	  }
+	  for _, tc := range testCases {
+		  //<<Run TestFindHomologies test cases>>
+	  }
+  }
+#+end_src
+#+begin_export latex
+We test \ty{FindHomologies} on input sequences covering various cases (Table~\ref{tab:testCasesFH})
+\begin{table}[H]
+  \centering
+  \caption{Test inputs for \ty{FindHomologies}. $S$, subject, $Q$, query, $c1$ and $c2$, contigs 1 and 2}
+  \begin{tabular}{l l l l l}
+    \hline
+    Case&$S$ markers&$Q$ markers\\
+    \hline
+    \ty{identical}&$c1[0:5000]$&$c1[0:5000]$\\
+    \hline
+    \ty{tooDistant}&$c1[none]$&$c1[none]$\\
+    \hline
+    \ty{s1q1}&$c1[1000:1500]$&$c1[1000:1500]$\\
+    \hline
+    \ty{s1q2a}&$c1[1000:1500]$&$c1[1000:1500], c2[none]$\\
+    \hline
+    \ty{s1q2b}&$c1[1000:1500]$&$c1[1000:1500], c2[500:1000]$\\
+    \hline
+    \ty{s2q1a}&$c1[1000:1500], c2[none]$&$c1[1500:2000]$\\
+    \hline
+    \ty{s2q1b}&$c1[1000:1200], c2[3000:3500]$&$c1[1500:1700], c1[2500:3000]$\\
+    \hline
+    \ty{s2q2}&$c1[100:400], c2[100:200]$&$c1[200:300], c2[400:700]$\\
+    \hline
+    \ty{onEnds}&$c1[0:500], c1[1000:1500]$&$c1[0:500], c1[1100:1600]$\\
+    \hline
+    \ty{mutations}&$c1[500:1000]$&$c1[500:1000]$, substitutions $16,17,66,291,387$\\
+  \end{tabular}
+  \label{tab:testCasesFH}
+\end{table}
+We will compare the output of \ty{FindHomologies} to results of
+\ty{phylonium -p}, a program based on the same algorithms and logic as
+our own function. We read \ty{fasta} files produced by \ty{phylonium}
+on the cases from Table~\ref{tabTestCasesFH}.
+#+end_export
+#+begin_src go <<Desired FindHomology outputs>>=
+  identical := readFasta("data/o/identical.fasta")
+  tooDistant := readFasta("data/o/tooDistant.fasta")
+  s1q1 := readFasta("data/o/s1q1.fasta")
+  s1q2a := readFasta("data/o/s1q2a.fasta")
+  s1q2b := readFasta("data/o/s1q2b.fasta")
+  s2q1a := readFasta("data/o/s2q1a.fasta")
+  s2q1b := readFasta("data/o/s2q1b.fasta")
+  s2q2 := readFasta("data/o/s2q2.fasta")
+  onEnds := readFasta("data/o/onEnds.fasta")
+  mutations := readFasta("data/o/mutations.fasta")
+#+end_src
+#+begin_export latex
+We define the function \ty{readFasta}, which opens a file and calls
+\ty{fasta.ReadAll} on it.
+#+end_export
+#+begin_src go <<Auxillary functions>>=
+  func readFasta(path string) []*fasta.Sequence {
+	  f, _ := os.Open(path)
+	  contigs := fasta.ReadAll(f)
+	  f.Close()
+	  return contigs
+  }
+#+end_src
+#+begin_export latex
+We import \ty{os} and \ty{fasta}.
+#+end_export
+#+begin_src go <<Testing imports>>=
+  "os"
+  "github.com/ivantsers/fasta"
+#+end_src
+#+begin_export latex
+We define the test cases.
+#+end_export
+#+begin_src go <<Test cases for TestFindHomologies>>=
+  {"identical", "identical.fasta", identical},
+  {"tooDistant", "tooDistant.fasta", tooDistant},
+  {"s1q1", "s1q1.fasta", s1q1},
+  {"s1q2a", "s1q2a.fasta", s1q2a},
+  {"s1q2b", "s1q2b.fasta", s1q2b},
+  {"s2q1a", "s2q1a.fasta", s2q1a},
+  {"s2q1b", "s2q1b.fasta", s2q1b},
+  {"s2q2", "s2q2.fasta", s2q2},
+  {"onEnds", "onEnds.fasta", onEnds},
+  {"mutations", "mutations.fasta", mutations},
+#+end_src
+#+begin_export latex
+We have to read and process inputs for each case. The function
+\ty{prepareSeq} takes care of opening a \ty{fasta} file, reading,
+cleaning, and concatenating its contigs.
+#+end_export
+#+begin_src go <<Auxillary functions>>=
+  func prepareSeq(path string) *fasta.Sequence {
+	  contigs := readFasta(path)
+	  for i, _ := range contigs {
+		  contigs[i].Clean()
+	  }
+	  seq := fasta.Concatenate(contigs, '!')
+	  return seq	
+  }
+#+end_src
+#+begin_export latex
+The function \ty{prepareSubject} returns the length and GC content of
+the sequence, the minimum anchor length, and ESA of the subject.
+#+end_export
+#+begin_src go <<Auxillary functions>>=
+  func prepareSubject(path string) (*fasta.Sequence, *esa.Esa, int) {
+	  seq := prepareSeq(path)
+	  rev := fasta.NewSequence("reverse", seq.Data())
+	  rev.ReverseComplement()
+	  seq.SetData(append(seq.Data(), rev.Data()...))
+	  sa := esa.MakeEsa(seq.Data())
+	  gc := seq.GC()
+	  ma := sus.Quantile(seq.Length()/2, gc, 0.95)
+	  return seq, sa, ma
+  }
+#+end_src
+#+begin_export latex
+We import \ty{esa} and \ty{sus}.
+#+end_export
+#+begin_src go <<Testing imports>>=
+  "github.com/evolbioinf/esa"
+  "github.com/evolbioinf/sus"
+#+end_src
+#+begin_export latex
+For each test case we prepare the subject and the query, calculate
+homologies, sort them and reduce overlaps. Then we convert \ty{Seg}
+slices into actual \ty{fasta} sequences and compare them to those
+produced by \ty{phylonium} on the same input.
+#+end_export
+#+begin_src go <<Run TestFindHomologies test cases>>=
+  t.Run(tc.name, func(t *testing.T) {
+	  s, sa, ma := prepareSubject("data/s/" + tc.input)
+	  q := prepareSeq("data/q/" + tc.input)
+	  h, n := FindHomologies(q, s, sa, ma)
+	  h = SortByStart(h)
+	  h = ReduceOverlaps(h)
+	  get := SegToFasta(h, sa, n, false)
+	  PrintSegsiteRanges(n, h, os.Stdout)
+	  for i := range get {
+		  if !reflect.DeepEqual(get[i].Data(), tc.want[i].Data()) {
+			  t.Errorf("\nwant:\n%v\nget:\n%v\n",
+				  string(tc.want[i].Data()),
+				  string(get[i].Data()))
+		  }
+	  }
+  })
+#+end_src
+#+begin_export latex
+We have just also tested the function \ty{SegToFasta} and the
+integration between \ty{FindHomologies}, \ty{SortByStart}, and
+\ty{ReduceOverlap}.
+#+end_export
