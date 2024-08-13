@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/evolbioinf/esa"
 	"github.com/ivantsers/fasta"
+	"math"
 	"os"
 	"sort"
 )
@@ -274,4 +275,51 @@ func argmax(x []int) int {
 		}
 	}
 	return maxIdx
+}
+
+// The function Intersect finds interection segment coordinates, which cover a given fraction of target genomes.
+func Intersect(h []Seg, g int, f float64, slen int) []Seg {
+	t := int(math.Floor(f * float64(g)))
+	if t == 0 {
+		t = 1
+	}
+	p := pileHeights(h, slen)
+	intersection := pileToSeg(p, t)
+	return intersection
+}
+func pileHeights(h []Seg, slen int) []int {
+	hlen := len(h)
+	pile := make([]int, slen)
+	for i := 0; i < hlen; i++ {
+		seg := h[i]
+		for j := seg.s; j < seg.End(); j++ {
+			pile[j] += 1
+		}
+	}
+	return pile
+}
+func pileToSeg(p []int, t int) []Seg {
+	var seg Seg
+	var h []Seg
+	segIsOpen := false
+	for k, v := range p {
+		if segIsOpen {
+			if v < t {
+				h = append(h, seg)
+				segIsOpen = false
+			} else {
+				seg.l += 1
+			}
+		} else {
+			if v >= t {
+				seg.s = k
+				seg.l = 1
+				segIsOpen = true
+			}
+		}
+	}
+	if segIsOpen {
+		h = append(h, seg)
+	}
+	return h
 }

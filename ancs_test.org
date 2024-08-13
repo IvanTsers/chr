@@ -6,6 +6,7 @@ imports and functions.
 #+begin_src go <<ancs_test.go>>=
   package ancs
   import (
+//"fmt"
 	  "testing"
 	  //<<Testing imports>>
   )
@@ -239,7 +240,7 @@ and iterate over them.
 We test \ty{FindHomologies} on input sequences covering various cases (Table~\ref{tab:testCasesFH})
 \begin{table}[H]
   \centering
-  \caption{Test inputs for \ty{FindHomologies}. $S$, subject, $Q$, query, $c1$ and $c2$, contigs 1 and 2}
+  \caption{Test inputs for \ty{FindHomologies}. $S$, subject, $Q$, query, $c1$ and $c2$, contigs 1 and 2, $N$, substitutions}
   \begin{tabular}{l l l l l}
     \hline
     Case&$S$ markers&$Q$ markers\\
@@ -262,14 +263,14 @@ We test \ty{FindHomologies} on input sequences covering various cases (Table~\re
     \hline
     \ty{onEnds}&$c1[0:500], c1[1000:1500]$&$c1[0:500], c1[1100:1600]$\\
     \hline
-    \ty{mutations}&$c1[500:1000]$&$c1[500:1000]$, substitutions $16,17,66,291,387$\\
+    \ty{mutations}&$c1[500:1000]$&$c1[500:1000]$, $N\{16,17,66,291,387\}$\\
   \end{tabular}
   \label{tab:testCasesFH}
 \end{table}
 We will compare the output of \ty{FindHomologies} to results of
 \ty{phylonium -p}, a program based on the same algorithms and logic as
-our own function. We read \ty{fasta} files produced by \ty{phylonium}
-on the cases from Table~\ref{tabTestCasesFH}.
+our own function~\cite{kloe19:phy}. We read \ty{fasta} files produced by \ty{phylonium}
+on the cases from Table~\ref{tab:testCasesFH}.
 #+end_export
 #+begin_src go <<Desired FindHomology outputs>>=
   identical := readFasta("data/o/identical.fasta")
@@ -333,8 +334,8 @@ cleaning, and concatenating its contigs.
   }
 #+end_src
 #+begin_export latex
-The function \ty{prepareSubject} returns the length and GC content of
-the sequence, the minimum anchor length, and ESA of the subject.
+The function \ty{prepareSubject} returns the length of the sequence,
+the minimum anchor length, and ESA of the subject.
 #+end_export
 #+begin_src go <<Auxillary functions>>=
   func prepareSubject(path string) (*fasta.Sequence, *esa.Esa, int) {
@@ -371,7 +372,8 @@ produced by \ty{phylonium} on the same input.
 	  get := SegToFasta(h, sa, n, false)
 	  PrintSegsiteRanges(n, h, os.Stdout)
 	  for i := range get {
-		  if !reflect.DeepEqual(get[i].Data(), tc.want[i].Data()) {
+		  if !reflect.DeepEqual(get[i].Data(),
+			  tc.want[i].Data()) {
 			  t.Errorf("\nwant:\n%v\nget:\n%v\n",
 				  string(tc.want[i].Data()),
 				  string(get[i].Data()))
@@ -384,3 +386,96 @@ We have just also tested the function \ty{SegToFasta} and the
 integration between \ty{FindHomologies}, \ty{SortByStart}, and
 \ty{ReduceOverlap}.
 #+end_export
+#+begin_export latex
+\subsection{\ty{Intersect}}
+We test \ty{Intersect} on an imaginary ten-nucleotide-long subject,
+for which a number of homologies was found in five query
+sequences (Figure~\ref{fig:testCasesIntersect}).
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\linewidth]{figTestCasesIntersect.eps}
+    \caption{Test input for the \ty{Intersect} function. The
+      horizontal ruler shows 0-based positions in the subject. A,
+      homologous segments found in 5 query sequences, curly brackets
+      hold the structure of the corresponding \ty{Seg} objects,
+      $\{start, length\}$. B, Subject coverage with homologous
+      segments ('pile heights'). Blue dashed line indicates an example
+      threshold fraction of 80\% of queries. Positions with the pile
+      heigth of at least 4 are to be included in the intersection.}
+    \label{fig:testCasesIntersect}
+\end{figure}
+
+We initialize a test slice of homologies to test \ty{Intersect} as
+well as the function \ty{pileHeights} driven by it. Then we perform a
+unit test for \ty{pileHeights}. Thereafter we call \ty{Intersect} and
+comapre what we want with what we get.
+#+end_export
+#+begin_src go <<Testing functions>>=
+  func TestIntersect(t *testing.T) {
+	  slen := 10
+	  a := NewSeg(0, 2)
+	  b := NewSeg(0, 3)
+	  c := NewSeg(1, 2)
+	  d := NewSeg(3, 5)
+	  e := NewSeg(5, 2)
+	  f := NewSeg(4, 4)
+	  g := NewSeg(8, 1)
+	  h := []Seg{a, b, a, a, c,
+		  d, f, e, e, f, g,
+	  }
+	  //<<Test pileHeights>>
+	  //<<Test cases for Intersect>>
+	  for _, tc := range testCases {
+		  //<<Run TestIntersect test cases>>
+	  }
+  }
+#+end_src
+#+begin_export latex
+A unit test for \ty{pileHeights} consists of the definition of the
+desired output, a call to \ty{pileHeights}, and comparison of the
+actual output to the expected.
+#+end_export
+#+begin_src go <<Test pileHeights>>=
+    t.Run("pileHeights", func(t *testing.T) {
+	    want := []int{4, 5, 2, 1, 3, 5, 5, 3, 1, 0}
+	    get := pileHeights(h, slen)
+	    if !reflect.DeepEqual(want, get) {
+		    t.Errorf("\nwant:\n%v\nget:\n%v\n", want, get)
+	    }
+    })
+#+end_src
+#+begin_export latex
+We define the test cases for \ty{Intersect}. These include fair
+sensitivity thresholds from 20\% to 80\%, as well as some edge
+cases. The expected outputs corresspond to
+Figure~\ref{fig:testCasesIntersect}.
+#+end_export
+#+begin_src go <<Test cases for Intersect>>=
+  testCases := []struct {
+	  name string
+	  threshold float64
+	  want []Seg
+  }{
+	  {"0%", 0.0, []Seg{NewSeg(0, 9)}},
+	  {"10%", 0.1, []Seg{NewSeg(0, 9)}},
+	  {"20%", 0.2, []Seg{NewSeg(0, 9)}},
+	  {"40%", 0.4, []Seg{NewSeg(0, 3), NewSeg(4, 4)}},
+	  {"60%", 0.6, []Seg{NewSeg(0, 2), NewSeg(4, 4)}},
+	  {"80%", 0.8, []Seg{NewSeg(0, 2), NewSeg(5, 2)}},
+	  {"90%", 0.9, []Seg{NewSeg(0, 2), NewSeg(5, 2)}},
+	  {"100%", 1.0, []Seg{NewSeg(1, 1), NewSeg(5, 2)}},
+  }
+#+end_src
+#+begin_export latex
+For each test case we 
+#+end_export
+#+begin_src go <<Run TestIntersect test cases>>=
+  t.Run(tc.name, func(t *testing.T) {
+	  want := tc.want
+	  get := Intersect(h, 5, tc.threshold, slen)
+	  if !reflect.DeepEqual(want, get) {
+		  t.Errorf("\nwant:\n%v\nget:\n%v\n", want, get)
+	  }
+  })
+#+end_src

@@ -617,3 +617,96 @@ brackets. If there are no next and previous values, we print \ty{k[i]}.
 	  return segfasta
   }
 #+end_src
+#+begin_export latex
+\subsubsection{\ty{Intersect}}
+!The function \ty{Intersect} finds interection segment coordinates,
+!which cover a given fraction of target genomes.
+
+We interpret the minimum fraction of intersecting genomes. Thereafter,
+we calculate pile heights, and filter the pile using the threshold.
+#+end_export
+#+begin_src go <<Functions>>=
+  func Intersect(h []Seg, g int, f float64, slen int) []Seg {
+	  //<<Interpret the threshold fraction>>
+	  p := pileHeights(h, slen)
+	  intersection := pileToSeg(p, t)
+	  return intersection
+  }
+#+end_src
+#+begin_export latex
+We calculate the product of the threshold fraction $f$ and the total
+number of queries $g$, that is, the total number of genomes taken into
+the analysis \textit{excluding} the implied subject. We round the
+product down to the nearest integer, but if the latter happens to be
+zero, we set the value to 1. Thus, we will be always trying to find
+the partial intersection for any $0 \le f < 1$ and $g /ge 1 $.
+#+end_export
+#+begin_src go <<Interpret the threshold fraction>>=
+  t := int(math.Floor(f * float64(g)))
+  if t == 0 {
+	  t = 1
+  }
+#+end_src
+#+begin_export latex
+We import \ty{math}.
+#+end_export
+#+begin_src go <<Imports>>=
+  "math"
+#+end_src
+#+begin_export latex
+The function \ty{pileHeights} counts how many times a position in the
+subject genome is covered with homologous segments found in queries.
+#+end_export
+#+begin_src go <<Functions>>=
+  func pileHeights(h []Seg, slen int) []int {
+	  hlen := len(h)
+	  pile := make([]int, slen)
+	  for i := 0; i < hlen; i++ {
+		  seg := h[i]
+		  for j := seg.s; j < seg.End(); j++ {
+			  pile[j] += 1 
+		  }
+	  }
+	  return pile
+  }
+#+end_src
+#+begin_export latex
+The function \ty{pileToSeg} returns a slice of segments, where each
+position is covered at least a given number of times. We iterate over
+keys and values of the pile, close or extend opened segments, and open
+new segments depending on the pile heights at given positions.
+#+end_export
+#+begin_src go <<Functions>>=
+  func pileToSeg(p []int, t int) []Seg {
+	  var seg Seg
+	  var h []Seg
+	  segIsOpen := false
+	  for k, v := range p {
+		  if segIsOpen {
+			  if v < t {
+				  h = append(h, seg)
+				  segIsOpen = false
+			  } else {
+				  seg.l += 1
+			  }
+		  } else {
+			  //<<New segment>>
+		  }
+	  }
+	  if segIsOpen {
+		  h = append(h, seg)
+	  }
+	  return h
+  }
+#+end_src
+#+begin_export latex
+We open a new segment if the pile height is not less than the
+threshold.
+#+end_export
+#+begin_src go <<New segment>>=
+  if v >= t {
+	  seg.s = k
+	  seg.l = 1
+	  segIsOpen = true
+  }
+#+end_src

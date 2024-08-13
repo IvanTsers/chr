@@ -1,6 +1,7 @@
 package ancs
 
 import (
+	//"fmt"
 	"github.com/evolbioinf/esa"
 	"github.com/evolbioinf/sus"
 	"github.com/ivantsers/fasta"
@@ -168,11 +169,55 @@ func TestFindHomologies(t *testing.T) {
 			get := SegToFasta(h, sa, n, false)
 			PrintSegsiteRanges(n, h, os.Stdout)
 			for i := range get {
-				if !reflect.DeepEqual(get[i].Data(), tc.want[i].Data()) {
+				if !reflect.DeepEqual(get[i].Data(),
+					tc.want[i].Data()) {
 					t.Errorf("\nwant:\n%v\nget:\n%v\n",
 						string(tc.want[i].Data()),
 						string(get[i].Data()))
 				}
+			}
+		})
+	}
+}
+func TestIntersect(t *testing.T) {
+	slen := 10
+	a := NewSeg(0, 2)
+	b := NewSeg(0, 3)
+	c := NewSeg(1, 2)
+	d := NewSeg(3, 5)
+	e := NewSeg(5, 2)
+	f := NewSeg(4, 4)
+	g := NewSeg(8, 1)
+	h := []Seg{a, b, a, a, c,
+		d, f, e, e, f, g,
+	}
+	t.Run("pileHeights", func(t *testing.T) {
+		want := []int{4, 5, 2, 1, 3, 5, 5, 3, 1, 0}
+		get := pileHeights(h, slen)
+		if !reflect.DeepEqual(want, get) {
+			t.Errorf("\nwant:\n%v\nget:\n%v\n", want, get)
+		}
+	})
+	testCases := []struct {
+		name      string
+		threshold float64
+		want      []Seg
+	}{
+		{"0%", 0.0, []Seg{NewSeg(0, 9)}},
+		{"10%", 0.1, []Seg{NewSeg(0, 9)}},
+		{"20%", 0.2, []Seg{NewSeg(0, 9)}},
+		{"40%", 0.4, []Seg{NewSeg(0, 3), NewSeg(4, 4)}},
+		{"60%", 0.6, []Seg{NewSeg(0, 2), NewSeg(4, 4)}},
+		{"80%", 0.8, []Seg{NewSeg(0, 2), NewSeg(5, 2)}},
+		{"90%", 0.9, []Seg{NewSeg(0, 2), NewSeg(5, 2)}},
+		{"100%", 1.0, []Seg{NewSeg(1, 1), NewSeg(5, 2)}},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			want := tc.want
+			get := Intersect(h, 5, tc.threshold, slen)
+			if !reflect.DeepEqual(want, get) {
+				t.Errorf("\nwant:\n%v\nget:\n%v\n", want, get)
 			}
 		})
 	}
