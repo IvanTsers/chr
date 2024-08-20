@@ -181,14 +181,14 @@ with the next prefix.
 	  }
 	  //<<Remember the current match>>
   }
-  qc = qc + currLen + 1
+	  qc = qc + currLen + 1
   }
   //Close the last segment if open:
   if rightAnchor || prevLen / 2 >= a {
   if seg.s > subjectStrandLen {
 	  seg.s = subjectLen + 1 - seg.s - seg.l
   }
-  h = append(h, seg)
+	  h = append(h, seg)
   }
 #+end_src
 #+begin_export latex
@@ -238,7 +238,7 @@ significant, and the function returns \ty{true}.
 	  *currStartS = tryS
 	  newCurrLen := lcp(queryLen,
 		  queryPrefix, subject.Data()[tryS:])
-	  *currLen = newCurrLen
+	  *currLen = newCurrLen	
 	  return newCurrLen >= a
   }
 #+end_src
@@ -342,6 +342,7 @@ To close the current segment is to project it onto the forward strand
 #+begin_src go <<Close the current segment>>=
   if seg.s > subjectStrandLen {
 	  seg.s = subjectLen + 1 - seg.s - seg.l
+
   }
   h = append(h, seg)
 #+end_src
@@ -430,7 +431,7 @@ chain ending before \ty{h[i]} starts, ensuring no overlap.
 	  maxScore := 0
 	  maxIndex := -1
 	  for k := 0; k < i; k++ {
-		  if h[k].End() < h[i].s {
+		  if h[k].End() <= h[i].s {
 			  if score[k] > maxScore {
 				  maxScore = score[k]
 				  maxIndex = k
@@ -445,11 +446,11 @@ chain ending before \ty{h[i]} starts, ensuring no overlap.
 	  }
   }
   // Debug messages. Will be removed in the future
-  //fmt.Println("***Homologies:")
+  //fmt.Fprintln(os.Stderr, "***Homologies:")
   //for _, el := range(h) {
-  //	fmt.Printf("***(%d, %d)\n", el.s, el.End())
+  //	fmt.Fprintf(os.Stderr, "***(%d, %d)\n", el.s, el.End())
   //}
-  //fmt.Println("***Scores:", score)
+  //fmt.Fprintln(os.Stderr, "***Scores:", score)
 #+end_src
 #+begin_export latex
 After calculating the scores for all homologies, we need to find
@@ -602,7 +603,7 @@ brackets. If there are no next and previous values, we print \ty{k[i]}.
 	  for i, s := range(segments) {
 		  start := s.s
 		  end := s.End()
-		  var data []byte
+		  data := make([]byte, 0, end-start)
 		  for j := start; j < end; j++ {
 			  if printNs && n[j] {
 				  data = append(data, 'N')
@@ -623,13 +624,25 @@ brackets. If there are no next and previous values, we print \ty{k[i]}.
 !which cover a given fraction of target genomes.
 
 We interpret the minimum fraction of intersecting genomes. Thereafter,
-we calculate pile heights, and filter the pile using the threshold.
+we calculate pile heights and filter the pile using the threshold.
+
+//I was going to repdroduce the exact behavoir of the matching as
+implemented in phylonium. Sometimes a contigious region is split in
+two parts for some reason to be investigated. During the
+pile-height-based intersection, the adjanced regions can be again
+merged into one. To avoid this, we would remember the ends of the
+regions and use them to enforce the original structure of homologous
+regions. For now, I comment it out//.
 #+end_export
 #+begin_src go <<Functions>>=
   func Intersect(h []Seg, g int, f float64, slen int) []Seg {
 	  //<<Interpret the threshold fraction>>
 	  p := pileHeights(h, slen)
-	  intersection := pileToSeg(p, t)
+	  //ends := make(map[int]bool)
+	  //for _, s := range h {
+	  //	ends[s.End()] = true
+	  //}
+	  intersection := pileToSeg(p, t)//, ends)
 	  return intersection
   }
 #+end_src
@@ -677,13 +690,13 @@ keys and values of the pile, close or extend opened segments, and open
 new segments depending on the pile heights at given positions.
 #+end_export
 #+begin_src go <<Functions>>=
-  func pileToSeg(p []int, t int) []Seg {
+  func pileToSeg(p []int, t int) []Seg { //, ends map[int]bool)
 	  var seg Seg
 	  var h []Seg
 	  segIsOpen := false
 	  for k, v := range p {
 		  if segIsOpen {
-			  if v < t {
+			  if v < t { // || end[k]
 				  h = append(h, seg)
 				  segIsOpen = false
 			  } else {

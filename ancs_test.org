@@ -6,7 +6,6 @@ imports and functions.
 #+begin_src go <<ancs_test.go>>=
   package ancs
   import (
-//"fmt"
 	  "testing"
 	  //<<Testing imports>>
   )
@@ -216,10 +215,10 @@ We run the tests and compare the actual output to the expected values.
 #+end_src
 #+begin_export latex
 \subsection{\ty{FindHomologies}}
-We test isolated \ty{FindHomologies} on several test sequences. Test
-cases combine two parameters: 1) number of contigs in subject and
-query, and 2) number of matching regions.  We define the test cases
-and iterate over them.
+We test \ty{FindHomologies} on several test sequences. Test cases
+combine two parameters: 1) number of contigs in subject and query, and
+2) number of matching regions.  We define the test cases and iterate
+over them.
 #+end_export
 #+begin_src go <<Testing functions>>=
   func TestFindHomologies (t *testing.T) {
@@ -478,4 +477,170 @@ For each test case we
 		  t.Errorf("\nwant:\n%v\nget:\n%v\n", want, get)
 	  }
   })
+#+end_src
+#+begin_export latex
+\subsection{A glocal alignment (integration test)}
+We emulate a real case workflow using the \ty{ancs} package
+functions. We have a number of input genomes we want to align. 
+
+We compare the results to the output of \ty{phylonium -p}. As
+\ty{phylonium} can only return complete intersections, we will use
+\ty{Intersect()} with 100\% sensitivity.
+
+There are two test cases: 1) ten 10kb-long target sequences generated
+by \ty{stan} (\url{github.com/evolbioinf/stan}), 2) five random
+sequences of SARS-CoV-2 obtained from the NCBI.
+#+end_export
+#+begin_src go <<Testing functions>>=
+  func TestAlignment(t *testing.T) {
+	  stan := readFasta("data/o/stan.fasta")
+	  sars := readFasta("data/o/sars.fasta")
+
+	  testCases := []struct {
+		  name string
+		  input string
+		  want []*fasta.Sequence
+	  }{
+		  {"stan", "data/i/stan/*", stan},
+		  {"sars", "data/i/sars/*", sars},
+	  }
+
+	  for _, tc := range testCases {
+		  //<<Run TestAlignment test cases>>
+	  }
+  }
+#+end_src
+#+begin_export latex
+We compare the expected \ty{fasta} to the actual results. We get the
+results from the wrapper function \ty{approxAlignment}, which we still
+have to write. Note: we always use the file \ty{t1.fasta} as the
+reference (subject).
+#+end_export
+#+begin_src go <<Run TestAlignment test cases>>=
+  t.Run(tc.name, func(t *testing.T) {
+	  want := tc.want
+	  get := approxAlignment("data/i/" + tc.name + "/t1.fasta", tc.input)
+	  //<<Compare want and get>>
+  })
+#+end_src
+#+begin_export latex
+We define the \ty{approxAlignment} function. To approximate the
+alignment of multiple sequences with our functions, we:
+
+\begin{enumerate}
+  \itemsep0em
+  \item read a set of input files;
+  \item isolate the subject from the query sequences;
+  \item prepare the subject;
+  \item iterate over queries to find homologies and save them in a slice;
+  \item intersect piled homologies.
+\end{enumerate}
+#+end_export
+#+begin_src go <<Auxillary functions>>=
+  func approxAlignment(ref string, inFiles string) []*fasta.Sequence {
+	  allFiles, _ := getFiles(inFiles)	
+	  queryNames := []string{}
+	  //<<Isolate query names>>
+	  numQueries := len(queryNames)
+	  s, sa, ma := prepareSubject(ref)
+
+	  allHomologies := []Seg{}
+	  allSegsites := make(map[int]bool)
+
+	  for _, q := range queryNames {
+		  query := prepareSeq(q)
+		  h, n := FindHomologies(query, s, sa, ma)
+		  h = SortByStart(h)
+		  h = ReduceOverlaps(h)
+		  allHomologies = append(allHomologies, h...)
+		  for pos, _ := range n {
+			  allSegsites[pos] = true
+		  }
+	  }
+	  intersection := Intersect(allHomologies,
+		  numQueries, 1.0, s.Length()/2)
+
+	  result := SegToFasta(intersection, sa, allSegsites, false)
+	  return result
+  }
+#+end_src
+#+begin_export latex
+The function \ty{getFiles} finds all file names masked with '*' in a
+directory.
+#+end_export
+#+begin_src go <<Auxillary functions>>=
+  func getFiles(pattern string) ([]string, error) {
+	  files, err := filepath.Glob(pattern)
+	  if err != nil {
+		  return nil, err
+	  }
+	  return files, nil
+  }
+#+end_src
+#+begin_export latex
+We import \ty{path/filepath}.
+#+end_export
+#+begin_src go <<Testing imports>>=
+  "path/filepath"
+#+end_src
+#+begin_export latex
+We emulate the separation of the query files from the subject.
+#+end_export
+#+begin_src go <<Isolate query names>>=
+  for _, fileName := range allFiles {
+	  if fileName != ref {
+		  queryNames = append(queryNames, fileName)
+	  }
+  }
+#+end_src
+#+begin_export latex
+We compare lengths of the slices. Then we test if each element of
+\ty{want} is contained in \ty{get}.
+#+end_export
+#+begin_src go <<Compare want and get>>=
+  //<<Compare lengths of want and get>>
+  for i := 0; i < minLen; i++ {
+	  if !containsData(get, want[i]) {
+		  t.Errorf("\n'%v' is absent from results:\n%v\n",
+			  want[i].Header(), string(want[i].Data()))
+	  }
+  }
+#+end_src
+#+begin_export latex
+We compare the number of elements in the slices, as well as the total
+lengths of bytes they contain. We also determine the shortest slice.
+#+end_export
+#+begin_src go <<Compare lengths of want and get>>=
+  wL := len(want)
+  gL := len(get)
+  minLen := gL
+  if gL != wL {
+	  t.Errorf("\nthe result has %d sequences, expected %d",
+		  gL, wL)
+	  if wL < gL {
+		  minLen = wL
+	  }
+
+  }
+  wConcat := fasta.Concatenate(want, 0)
+  gConcat := fasta.Concatenate(get, 0)
+  if len(wConcat.Data()) != len(gConcat.Data()) {
+	  t.Errorf("\nthe result has %d nucleotides, expected %d",
+		  len(gConcat.Data()), len(wConcat.Data()))
+  }
+#+end_src
+#+begin_export latex
+The function \ty{contains} checks if a slice of \ty{fasta} entries
+contains an element with the same \ty{Data} as the query \ty{fasta}.
+#+end_export
+#+begin_src go <<Auxillary functions>>=
+  func containsData(slice []*fasta.Sequence,
+	  el *fasta.Sequence) bool {
+	  for _, item := range slice {
+		  if reflect.DeepEqual(item.Data(), el.Data()) {
+			  return true
+		  }
+	  }
+	  return false
+  }
 #+end_src

@@ -1,12 +1,12 @@
 package ancs
 
 import (
-	//"fmt"
 	"github.com/evolbioinf/esa"
 	"github.com/evolbioinf/sus"
 	"github.com/ivantsers/fasta"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"testing"
@@ -36,6 +36,52 @@ func prepareSubject(path string) (*fasta.Sequence, *esa.Esa, int) {
 	gc := seq.GC()
 	ma := sus.Quantile(seq.Length()/2, gc, 0.95)
 	return seq, sa, ma
+}
+func approxAlignment(ref string, inFiles string) []*fasta.Sequence {
+	allFiles, _ := getFiles(inFiles)
+	queryNames := []string{}
+	for _, fileName := range allFiles {
+		if fileName != ref {
+			queryNames = append(queryNames, fileName)
+		}
+	}
+	numQueries := len(queryNames)
+	s, sa, ma := prepareSubject(ref)
+
+	allHomologies := []Seg{}
+	allSegsites := make(map[int]bool)
+
+	for _, q := range queryNames {
+		query := prepareSeq(q)
+		h, n := FindHomologies(query, s, sa, ma)
+		h = SortByStart(h)
+		h = ReduceOverlaps(h)
+		allHomologies = append(allHomologies, h...)
+		for pos, _ := range n {
+			allSegsites[pos] = true
+		}
+	}
+	intersection := Intersect(allHomologies,
+		numQueries, 1.0, s.Length()/2)
+
+	result := SegToFasta(intersection, sa, allSegsites, false)
+	return result
+}
+func getFiles(pattern string) ([]string, error) {
+	files, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil, err
+	}
+	return files, nil
+}
+func containsData(slice []*fasta.Sequence,
+	el *fasta.Sequence) bool {
+	for _, item := range slice {
+		if reflect.DeepEqual(item.Data(), el.Data()) {
+			return true
+		}
+	}
+	return false
 }
 func TestSeg(t *testing.T) {
 	seg := NewSeg(1, 10)
@@ -218,6 +264,49 @@ func TestIntersect(t *testing.T) {
 			get := Intersect(h, 5, tc.threshold, slen)
 			if !reflect.DeepEqual(want, get) {
 				t.Errorf("\nwant:\n%v\nget:\n%v\n", want, get)
+			}
+		})
+	}
+}
+func TestAlignment(t *testing.T) {
+	stan := readFasta("data/o/stan.fasta")
+	sars := readFasta("data/o/sars.fasta")
+
+	testCases := []struct {
+		name  string
+		input string
+		want  []*fasta.Sequence
+	}{
+		{"stan", "data/i/stan/*", stan},
+		{"sars", "data/i/sars/*", sars},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			want := tc.want
+			get := approxAlignment("data/i/"+tc.name+"/t1.fasta", tc.input)
+			wL := len(want)
+			gL := len(get)
+			minLen := gL
+			if gL != wL {
+				t.Errorf("\nthe result has %d sequences, expected %d",
+					gL, wL)
+				if wL < gL {
+					minLen = wL
+				}
+
+			}
+			wConcat := fasta.Concatenate(want, 0)
+			gConcat := fasta.Concatenate(get, 0)
+			if len(wConcat.Data()) != len(gConcat.Data()) {
+				t.Errorf("\nthe result has %d nucleotides, expected %d",
+					len(gConcat.Data()), len(wConcat.Data()))
+			}
+			for i := 0; i < minLen; i++ {
+				if !containsData(get, want[i]) {
+					t.Errorf("\n'%v' is absent from results:\n%v\n",
+						want[i].Header(), string(want[i].Data()))
+				}
 			}
 		})
 	}

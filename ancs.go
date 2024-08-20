@@ -84,6 +84,7 @@ func FindHomologies(
 				if rightAnchor || prevLen/2 >= a {
 					if seg.s > subjectStrandLen {
 						seg.s = subjectLen + 1 - seg.s - seg.l
+
 					}
 					h = append(h, seg)
 				}
@@ -122,7 +123,7 @@ func ReduceOverlaps(h []Seg) []Seg {
 		maxScore := 0
 		maxIndex := -1
 		for k := 0; k < i; k++ {
-			if h[k].End() < h[i].s {
+			if h[k].End() <= h[i].s {
 				if score[k] > maxScore {
 					maxScore = score[k]
 					maxIndex = k
@@ -137,11 +138,11 @@ func ReduceOverlaps(h []Seg) []Seg {
 		}
 	}
 	// Debug messages. Will be removed in the future
-	//fmt.Println("***Homologies:")
+	//fmt.Fprintln(os.Stderr, "***Homologies:")
 	//for _, el := range(h) {
-	//      fmt.Printf("***(%d, %d)\n", el.s, el.End())
+	//      fmt.Fprintf(os.Stderr, "***(%d, %d)\n", el.s, el.End())
 	//}
-	//fmt.Println("***Scores:", score)
+	//fmt.Fprintln(os.Stderr, "***Scores:", score)
 	s := argmax(score)
 	for s != -1 {
 		visited[s] = true
@@ -207,7 +208,7 @@ func SegToFasta(segments []Seg,
 	for i, s := range segments {
 		start := s.s
 		end := s.End()
-		var data []byte
+		data := make([]byte, 0, end-start)
 		for j := start; j < end; j++ {
 			if printNs && n[j] {
 				data = append(data, 'N')
@@ -284,7 +285,11 @@ func Intersect(h []Seg, g int, f float64, slen int) []Seg {
 		t = 1
 	}
 	p := pileHeights(h, slen)
-	intersection := pileToSeg(p, t)
+	//ends := make(map[int]bool)
+	//for _, s := range h {
+	//    ends[s.End()] = true
+	//}
+	intersection := pileToSeg(p, t) //, ends)
 	return intersection
 }
 func pileHeights(h []Seg, slen int) []int {
@@ -298,13 +303,13 @@ func pileHeights(h []Seg, slen int) []int {
 	}
 	return pile
 }
-func pileToSeg(p []int, t int) []Seg {
+func pileToSeg(p []int, t int) []Seg { //, ends map[int]bool)
 	var seg Seg
 	var h []Seg
 	segIsOpen := false
 	for k, v := range p {
 		if segIsOpen {
-			if v < t {
+			if v < t { // || end[k]
 				h = append(h, seg)
 				segIsOpen = false
 			} else {
