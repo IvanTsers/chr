@@ -157,7 +157,7 @@ func ReduceOverlaps(h []Seg) []Seg {
 	return hred
 }
 
-// \ty(TotalSegLen()) accepts a slice of segments and returns their total length.
+// TotalSegLen() accepts a slice of segments and returns their total length.
 func TotalSegLen(segments []Seg) int {
 	sumlen := 0
 	for _, s := range segments {
@@ -278,24 +278,31 @@ func argmax(x []int) int {
 	return maxIdx
 }
 
-// The function Intersect finds interection segment coordinates, which cover a given fraction of target genomes.
+// The function Intersect accept a slice of segments and finds coordinates of intersecting segments, which cover a given fraction of target genomes.
 func Intersect(h []Seg, g int, f float64, slen int) []Seg {
 	t := int(math.Floor(f * float64(g)))
 	if t == 0 {
 		t = 1
 	}
 	p := pileHeights(h, slen)
-	//ends := make(map[int]bool)
-	//for _, s := range h {
-	//    ends[s.End()] = true
-	//}
-	intersection := pileToSeg(p, t) //, ends)
+	starts := make(map[int]bool)
+	ends := []int{}
+	for i := 0; i < len(h); i++ {
+		starts[h[i].s] = true
+		ends = append(ends, h[i].End())
+	}
+	isAdj := make(map[int]bool)
+	for _, e := range ends {
+		if starts[e] {
+			isAdj[e] = true
+		}
+	}
+	intersection := pileToSeg(p, t, isAdj)
 	return intersection
 }
 func pileHeights(h []Seg, slen int) []int {
-	hlen := len(h)
 	pile := make([]int, slen)
-	for i := 0; i < hlen; i++ {
+	for i := 0; i < len(h); i++ {
 		seg := h[i]
 		for j := seg.s; j < seg.End(); j++ {
 			pile[j] += 1
@@ -303,17 +310,21 @@ func pileHeights(h []Seg, slen int) []int {
 	}
 	return pile
 }
-func pileToSeg(p []int, t int) []Seg { //, ends map[int]bool)
+func pileToSeg(p []int, t int, isAdj map[int]bool) []Seg {
 	var seg Seg
 	var h []Seg
 	segIsOpen := false
 	for k, v := range p {
 		if segIsOpen {
-			if v < t { // || end[k]
+			if v < t {
 				h = append(h, seg)
 				segIsOpen = false
 			} else {
 				seg.l += 1
+				if isAdj[k+1] {
+					h = append(h, seg)
+					segIsOpen = false
+				}
 			}
 		} else {
 			if v >= t {

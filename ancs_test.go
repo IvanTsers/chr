@@ -165,7 +165,7 @@ func TestReduceOverlaps(t *testing.T) {
 		{"Partial overlap same len", []Seg{x, y}, []Seg{x}},
 		{"Partial overlap diff len", []Seg{x, z}, []Seg{z}},
 		{"Various", []Seg{g, x, y, z, a, b, c, d, e, f},
-			[]Seg{z, c, e, f}},
+			[]Seg{g, z, b, d, e, f}},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -244,19 +244,24 @@ func TestIntersect(t *testing.T) {
 			t.Errorf("\nwant:\n%v\nget:\n%v\n", want, get)
 		}
 	})
+	zero := []Seg{NewSeg(0, 3), NewSeg(3, 5), NewSeg(8, 1)}
+	forty := []Seg{NewSeg(0, 3), NewSeg(4, 4)}
+	sixty := []Seg{NewSeg(0, 2), NewSeg(4, 4)}
+	eighty := []Seg{NewSeg(0, 2), NewSeg(5, 2)}
+	hundred := []Seg{NewSeg(1, 1), NewSeg(5, 2)}
 	testCases := []struct {
 		name      string
 		threshold float64
 		want      []Seg
 	}{
-		{"0%", 0.0, []Seg{NewSeg(0, 9)}},
-		{"10%", 0.1, []Seg{NewSeg(0, 9)}},
-		{"20%", 0.2, []Seg{NewSeg(0, 9)}},
-		{"40%", 0.4, []Seg{NewSeg(0, 3), NewSeg(4, 4)}},
-		{"60%", 0.6, []Seg{NewSeg(0, 2), NewSeg(4, 4)}},
-		{"80%", 0.8, []Seg{NewSeg(0, 2), NewSeg(5, 2)}},
-		{"90%", 0.9, []Seg{NewSeg(0, 2), NewSeg(5, 2)}},
-		{"100%", 1.0, []Seg{NewSeg(1, 1), NewSeg(5, 2)}},
+		{"0%", 0.0, zero},
+		{"10%", 0.1, zero},
+		{"20%", 0.2, zero},
+		{"40%", 0.4, forty},
+		{"60%", 0.6, sixty},
+		{"80%", 0.8, eighty},
+		{"90%", 0.9, eighty},
+		{"100%", 1.0, hundred},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {

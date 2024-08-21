@@ -198,7 +198,7 @@ We describe the test cases:
   {"Partial overlap same len", []Seg{x, y}, []Seg{x}},
   {"Partial overlap diff len", []Seg{x, z}, []Seg{z}},
   {"Various", []Seg{g, x, y, z, a, b, c, d, e, f},
-	  []Seg{z, c, e, f}},
+	  []Seg{g, z, b, d, e, f}},
 #+end_src
 #+begin_export latex
 We run the tests and compare the actual output to the expected values.
@@ -390,21 +390,22 @@ integration between \ty{FindHomologies}, \ty{SortByStart}, and
 We test \ty{Intersect} on an imaginary ten-nucleotide-long subject,
 for which a number of homologies was found in five query
 sequences (Figure~\ref{fig:testCasesIntersect}).
-
 \begin{figure}[H]
     \centering
     \includegraphics[width=\linewidth]{figTestCasesIntersect.eps}
-    \caption{Test input for the \ty{Intersect} function. The
-      horizontal ruler shows 0-based positions in the subject. A,
-      homologous segments found in 5 query sequences, curly brackets
-      hold the structure of the corresponding \ty{Seg} objects,
-      $\{start, length\}$. B, Subject coverage with homologous
-      segments ('pile heights'). Blue dashed line indicates an example
-      threshold fraction of 80\% of queries. Positions with the pile
-      heigth of at least 4 are to be included in the intersection.}
+    \caption{Test input and intermediate results of the \ty{Intersect}
+      function. A, homologous segments found in 5 query sequences,
+      curly brackets hold the structure of the corresponding \ty{Seg}
+      objects, $\{start, length\}$. B, Subject coverage with
+      homologous segments ('pile heights'). Blue horizontal dashed
+      line indicates an example threshold fraction of 80\% of
+      queries. With this threshold, positions with the pile heigth of
+      at least 4 are to be included in the intersection. Red vertical
+      lines indicate the positions of adjacent segments, at which the
+      intersection is forced to be broken into two segments to avoid
+      chimeric sequences.}
     \label{fig:testCasesIntersect}
 \end{figure}
-
 We initialize a test slice of homologies to test \ty{Intersect} as
 well as the function \ty{pileHeights} driven by it. Then we perform a
 unit test for \ty{pileHeights}. Thereafter we call \ty{Intersect} and
@@ -451,19 +452,24 @@ cases. The expected outputs corresspond to
 Figure~\ref{fig:testCasesIntersect}.
 #+end_export
 #+begin_src go <<Test cases for Intersect>>=
+  zero := []Seg{NewSeg(0, 3), NewSeg(3, 5), NewSeg(8, 1)}
+  forty := []Seg{NewSeg(0, 3), NewSeg(4, 4)}
+  sixty := []Seg{NewSeg(0, 2), NewSeg(4, 4)}
+  eighty := []Seg{NewSeg(0, 2), NewSeg(5, 2)}
+  hundred := []Seg{NewSeg(1, 1), NewSeg(5, 2)}
   testCases := []struct {
 	  name string
 	  threshold float64
 	  want []Seg
   }{
-	  {"0%", 0.0, []Seg{NewSeg(0, 9)}},
-	  {"10%", 0.1, []Seg{NewSeg(0, 9)}},
-	  {"20%", 0.2, []Seg{NewSeg(0, 9)}},
-	  {"40%", 0.4, []Seg{NewSeg(0, 3), NewSeg(4, 4)}},
-	  {"60%", 0.6, []Seg{NewSeg(0, 2), NewSeg(4, 4)}},
-	  {"80%", 0.8, []Seg{NewSeg(0, 2), NewSeg(5, 2)}},
-	  {"90%", 0.9, []Seg{NewSeg(0, 2), NewSeg(5, 2)}},
-	  {"100%", 1.0, []Seg{NewSeg(1, 1), NewSeg(5, 2)}},
+	  {"0%", 0.0, zero},
+	  {"10%", 0.1, zero},
+	  {"20%", 0.2, zero},
+	  {"40%", 0.4, forty},
+	  {"60%", 0.6, sixty},
+	  {"80%", 0.8, eighty},
+	  {"90%", 0.9, eighty},
+	  {"100%", 1.0, hundred},
   }
 #+end_src
 #+begin_export latex

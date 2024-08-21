@@ -67,10 +67,10 @@ The \ty{ancs} package contains a number of functions.
 #+end_export
 #+begin_src go <<SortByStart>>=
   func SortByStart(s []Seg) []Seg {
-          sort.Slice(s, func(i, j int) bool {
-                  return s[i].s < s[j].s
-          })
-          return s
+	  sort.Slice(s, func(i, j int) bool {
+		  return s[i].s < s[j].s
+	  })
+	  return s
   }
 #+end_src
 #+begin_export latex
@@ -498,7 +498,7 @@ slice.
   return hred
 #+end_src
 #+begin_export latex
-!\ty(TotalSegLen()) accepts a slice of segments and returns their
+!\ty{TotalSegLen()} accepts a slice of segments and returns their
 !total length.
 #+end_export
 #+begin_src go <<TotalSegLen>>=
@@ -620,30 +620,20 @@ brackets. If there are no next and previous values, we print \ty{k[i]}.
 #+end_src
 #+begin_export latex
 \subsubsection{\ty{Intersect}}
-!The function \ty{Intersect} finds interection segment coordinates,
-!which cover a given fraction of target genomes.
+!The function \ty{Intersect} accept a slice of segments and finds
+!coordinates of intersecting segments, which cover a given fraction of
+!target genomes.
 
 We interpret the minimum fraction of intersecting genomes. Thereafter,
-we calculate pile heights and filter the pile using the threshold.
-
-//I was going to repdroduce the exact behavoir of the matching as
-implemented in phylonium. Sometimes a contigious region is split in
-two parts for some reason to be investigated. During the
-pile-height-based intersection, the adjanced regions can be again
-merged into one. To avoid this, we would remember the ends of the
-regions and use them to enforce the original structure of homologous
-regions. For now, I comment it out//.
+we calculate pile heights, that is, how many times a nucleotide of the
+subject is covered by piled up homologous regions. Then we convert
+pile heights to actual segments.
 #+end_export
 #+begin_src go <<Functions>>=
   func Intersect(h []Seg, g int, f float64, slen int) []Seg {
 	  //<<Interpret the threshold fraction>>
 	  p := pileHeights(h, slen)
-	  //ends := make(map[int]bool)
-	  //for _, s := range h {
-	  //	ends[s.End()] = true
-	  //}
-	  intersection := pileToSeg(p, t)//, ends)
-	  return intersection
+	  //<<Convert pile heights to segments>>
   }
 #+end_src
 #+begin_export latex
@@ -672,38 +662,110 @@ subject genome is covered with homologous segments found in queries.
 #+end_export
 #+begin_src go <<Functions>>=
   func pileHeights(h []Seg, slen int) []int {
-	  hlen := len(h)
 	  pile := make([]int, slen)
-	  for i := 0; i < hlen; i++ {
+	  for i := 0; i < len(h); i++ {
 		  seg := h[i]
 		  for j := seg.s; j < seg.End(); j++ {
-			  pile[j] += 1 
+			  pile[j] += 1
 		  }
 	  }
 	  return pile
   }
 #+end_src
 #+begin_export latex
+After the filtering, we convert the pile heights to actual segments.
+During this process, two regions could be merged if they were adjacent
+in the \textit{normalized} reference. The normalization implies 1)
+converting all characters to uppercase, 2) removal of
+non-conventioonal nucleotidesm that is, keeping only \ty{A, T, G,
+  C}. The removal shifts proper nucleotides that followed the removed
+characters to the left. As the result, two regions separated in the
+original sequence become adjacent in the normalized sequence
+(Figure~\ref{fig:MatchEnds}, A). This creates a risk of an incorrect
+interpretation of pile heights unless match ends are not neglected
+(Figure~\ref{fig:MatchEnds}, B).
+
+\begin{figure}[H]
+    \includegraphics[width=\linewidth]{figMatchEnds.eps}
+    \caption{Normalization of the subject affects how pile heights are
+      interpreted. In panel A, a region of the real SARS-CoV-2 genome
+      from \ty{data/i/sars/t1.fasta} is used as the subject
+      (reference) to find matches in 4 queries. This region contains
+      20 undetermined nucleotides (\ty{N}), which are removed during
+      normalization. The right fragment then gets a new start
+      coordinate (shown in red). In panel B, the normalized sequence
+      shows pile heights of 4 (grey), indicating that these
+      nucleotides are present at the same positions in all 4
+      queries. The red line marks the right border of the segment
+      ending with \ty{GCTTTTGT}. If the pile heights were converted to
+      the final output without considering this border, it would
+      produce a chimeric sequence, which is an incorrect result.}
+    \label{fig:MatchEnds}
+\end{figure}
+To avoid chimeric sequences in the output, we create 'a map of
+adjacency'. This map holds ends of the left segment from a pair. Then
+we perform the conversion and return the segments that make up the
+intersection.
+#+end_export
+#+begin_src go <<Convert pile heights to segments>>=
+  //<<Create a map of adjacency>>
+  intersection := pileToSeg(p, t, isAdj)
+  return intersection
+#+end_src
+#+begin_export latex
+We search for such pairs of segments, where the end of the left
+segment is immideately followed by the start of the right segment. In
+terms of 0-based coordinates, this implies that the start and the end
+share the same coordinate.
+
+We declare two auxullary variables, \ty{starts} (a map of booleans
+with integer keys) and \ty{ends} (a slice of integers). Then we use
+them to find ends that coincide with at least one start. We save such
+ends in the adjacency map.
+#+end_export
+#+begin_src go <<Create a map of adjacency>>=
+  //<<Describe starts and ends>>
+  isAdj := make(map[int]bool)
+  for _, e := range ends {
+	  if starts[e] {
+		  isAdj[e] = true
+	  }
+  }
+#+end_src
+#+begin_export latex
+We traverse the slice of segments, saving each segment start to the
+map \ty{starts} and one's end to the slice of \ty{ends}.
+#+end_export
+#+begin_src go <<Describe starts and ends>>=
+  starts := make(map[int]bool)
+  ends := []int{}
+  for i := 0; i < len(h); i++ {
+	  starts[h[i].s] = true
+	  ends = append(ends, h[i].End())
+  }
+#+end_src
+#+begin_export latex
 The function \ty{pileToSeg} returns a slice of segments, where each
 position is covered at least a given number of times. We iterate over
-keys and values of the pile, close or extend opened segments, and open
-new segments depending on the pile heights at given positions.
+keys and values of the pile.  We close an opened segment if the pile
+height is below the threshold, otherwise we extend the segment. If
+there is no opened segment, we open it. In the end we close the last
+segment and return the result.
 #+end_export
 #+begin_src go <<Functions>>=
-  func pileToSeg(p []int, t int) []Seg { //, ends map[int]bool)
+  func pileToSeg(p []int, t int, isAdj map[int]bool) []Seg {
 	  var seg Seg
 	  var h []Seg
 	  segIsOpen := false
 	  for k, v := range p {
 		  if segIsOpen {
-			  if v < t { // || end[k]
-				  h = append(h, seg)
-				  segIsOpen = false
+			  if v < t {
+				  //<<Close intersection segment>>
 			  } else {
-				  seg.l += 1
+				  //<<Extend intersection segment>>
 			  }
 		  } else {
-			  //<<New segment>>
+			  //<<New intersection segment>>
 		  }
 	  }
 	  if segIsOpen {
@@ -713,10 +775,29 @@ new segments depending on the pile heights at given positions.
   }
 #+end_src
 #+begin_export latex
+To close a segment is to append it to the resulting slice and toggle
+segment's status.
+#+end_export
+#+begin_src go <<Close intersection segment>>=
+  h = append(h, seg)
+  segIsOpen = false
+#+end_src
+#+begin_export latex
+The extension implies adding one to the segment's length. After the
+extension we check whether the next position is listed in the
+adjacency map. If so, we close the segment from here.
+#+end_export
+#+begin_src go <<Extend intersection segment>>=
+  seg.l += 1
+  if isAdj[k+1] {
+	  //<<Close intersection segment>>
+  }
+#+end_src
+#+begin_export latex
 We open a new segment if the pile height is not less than the
 threshold.
 #+end_export
-#+begin_src go <<New segment>>=
+#+begin_src go <<New intersection segment>>=
   if v >= t {
 	  seg.s = k
 	  seg.l = 1
