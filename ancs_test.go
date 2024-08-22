@@ -27,7 +27,7 @@ func prepareSeq(path string) *fasta.Sequence {
 	seq := fasta.Concatenate(contigs, '!')
 	return seq
 }
-func prepareSubject(path string) (*fasta.Sequence, *esa.Esa, int) {
+func prepareSubject(path string) (*esa.Esa, int) {
 	seq := prepareSeq(path)
 	rev := fasta.NewSequence("reverse", seq.Data())
 	rev.ReverseComplement()
@@ -35,7 +35,7 @@ func prepareSubject(path string) (*fasta.Sequence, *esa.Esa, int) {
 	sa := esa.MakeEsa(seq.Data())
 	gc := seq.GC()
 	ma := sus.Quantile(seq.Length()/2, gc, 0.95)
-	return seq, sa, ma
+	return sa, ma
 }
 func approxAlignment(ref string, inFiles string) []*fasta.Sequence {
 	allFiles, _ := getFiles(inFiles)
@@ -46,14 +46,14 @@ func approxAlignment(ref string, inFiles string) []*fasta.Sequence {
 		}
 	}
 	numQueries := len(queryNames)
-	s, sa, ma := prepareSubject(ref)
+	sa, ma := prepareSubject(ref)
 
 	allHomologies := []Seg{}
 	allSegsites := make(map[int]bool)
 
 	for _, q := range queryNames {
 		query := prepareSeq(q)
-		h, n := FindHomologies(query, s, sa, ma)
+		h, n := FindHomologies(query, sa, ma)
 		h = SortByStart(h)
 		h = ReduceOverlaps(h)
 		allHomologies = append(allHomologies, h...)
@@ -62,7 +62,7 @@ func approxAlignment(ref string, inFiles string) []*fasta.Sequence {
 		}
 	}
 	intersection := Intersect(allHomologies,
-		numQueries, 1.0, s.Length()/2)
+		numQueries, 1.0, len(sa.T)/2)
 
 	result := SegToFasta(intersection, sa, allSegsites, false)
 	return result
@@ -207,9 +207,9 @@ func TestFindHomologies(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			s, sa, ma := prepareSubject("data/s/" + tc.input)
+			sa, ma := prepareSubject("data/s/" + tc.input)
 			q := prepareSeq("data/q/" + tc.input)
-			h, n := FindHomologies(q, s, sa, ma)
+			h, n := FindHomologies(q, sa, ma)
 			h = SortByStart(h)
 			h = ReduceOverlaps(h)
 			get := SegToFasta(h, sa, n, false)

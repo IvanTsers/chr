@@ -81,12 +81,12 @@ We import \ty{sort}.
 #+end_src
 #+begin_export latex
 \subsubsection{\ty{FindHomologies}}
-!The function \ty{FindHomologies} accepts query and subject sequences,
-!an enhanced suffix array of the subject, and the minimum anchor
-!length \ty{a}. The function returns a slice of segments (homologous
-!regions, or homologies) and a bool map of segregation sites found
-!within the homologies. If no homologies have been found, an empty
-!slice of segments and empty map of segregation sites are returned.
+!The function \ty{FindHomologies} accepts a query sequence, an
+!enhanced suffix array of the subject, and the minimum anchor length
+!\ty{a}. The function returns a slice of segments (homologous regions,
+!or homologies) and a bool map of segregation sites found within the
+!homologies. If no homologies have been found, an empty slice of
+!segments and empty map of segregation sites are returned.
 
 We initialize variables to operate with in the search of homologies,
 conduct the search, and return its results.
@@ -94,7 +94,6 @@ conduct the search, and return its results.
 #+begin_src go <<FindHomologies>>=
   func FindHomologies(
 	  query *fasta.Sequence,
-	  subject *fasta.Sequence,
 	  e *esa.Esa,
 	  a int) ([]Seg, map[int]bool) {
 	  //<<Initialize search>>
@@ -133,7 +132,7 @@ We declare variables to operate with during the search. These are:
   var h []Seg
   n := make(map[int]bool)
   rightAnchor := false
-  subjectLen := subject.Length()
+  subjectLen := len(e.T)
   subjectStrandLen := subjectLen/2
   queryLen := query.Length()
 #+end_src
@@ -199,13 +198,13 @@ yet to be written.
   lcpAnchor(&currStartS, &currLen,
 	  prevStartS, prevLen,
 	  subjectLen, queryLen, qc, qp,
-	  a, queryPrefix, subject)
+	  a, queryPrefix, e)
 #+end_src
 #+begin_export latex
 !The function \ty{lcpAnchor} accepts the following inputs: 1) pointer
 !to the current match length; 2) start of the current match in the
 !subject; 3) a map of segregation sites; 4) the minimum anchor length;
-!5) the current query prefix; 6) a pointer to the subject. The
+!5) the current query prefix; 6) a pointer to subject's ESA. The
 !function returns a boolean. Regardless of the significance of the
 !match, the function updates the start and the length of the current
 !match.
@@ -228,7 +227,7 @@ significant, and the function returns \ty{true}.
 	  qc, qp int,
 	  a int,
 	  queryPrefix []byte,
-	  subject *fasta.Sequence) bool {
+	  e *esa.Esa) bool {
 	  advance := qc - qp
 	  gap := advance - prevLen
 	  tryS := prevStartS + advance
@@ -237,7 +236,7 @@ significant, and the function returns \ty{true}.
 	  }
 	  *currStartS = tryS
 	  newCurrLen := lcp(queryLen,
-		  queryPrefix, subject.Data()[tryS:])
+		  queryPrefix, e.T[tryS:])
 	  *currLen = newCurrLen	
 	  return newCurrLen >= a
   }
@@ -325,7 +324,7 @@ found a new right anchor.
   prevSegEnd := seg.End()
   gap := qc - prevEndQ
   seg.l = seg.l + gap + currLen
-  a := subject.Data()[prevSegEnd:prevSegEnd + gap]
+  a := e.T[prevSegEnd:prevSegEnd + gap]
   b := query.Data()[prevEndQ:prevEndQ + gap]
 
   for i := 0; i < gap; i++ {

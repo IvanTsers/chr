@@ -33,10 +33,9 @@ func SortByStart(s []Seg) []Seg {
 	return s
 }
 
-// The function FindHomologies accepts query and subject sequences, an enhanced suffix array of the subject, and the minimum anchor length a. The function returns a slice of segments (homologous regions, or homologies) and a bool map of segregation sites found within the homologies. If no homologies have been found, an empty slice of segments and empty map of segregation sites are returned.
+// The function FindHomologies accepts a query sequence, an enhanced suffix array of the subject, and the minimum anchor length a. The function returns a slice of segments (homologous regions, or homologies) and a bool map of segregation sites found within the homologies. If no homologies have been found, an empty slice of segments and empty map of segregation sites are returned.
 func FindHomologies(
 	query *fasta.Sequence,
-	subject *fasta.Sequence,
 	e *esa.Esa,
 	a int) ([]Seg, map[int]bool) {
 	var qc, qp int
@@ -46,7 +45,7 @@ func FindHomologies(
 	var h []Seg
 	n := make(map[int]bool)
 	rightAnchor := false
-	subjectLen := subject.Length()
+	subjectLen := len(e.T)
 	subjectStrandLen := subjectLen / 2
 	queryLen := query.Length()
 	for qc < queryLen {
@@ -54,7 +53,7 @@ func FindHomologies(
 		if lcpAnchor(&currStartS, &currLen,
 			prevStartS, prevLen,
 			subjectLen, queryLen, qc, qp,
-			a, queryPrefix, subject) || esaAnchor(&currStartS, &currLen, a, queryPrefix, e) {
+			a, queryPrefix, e) || esaAnchor(&currStartS, &currLen, a, queryPrefix, e) {
 			prevEndQ := qp + prevLen
 			prevEndS = prevStartS + prevLen
 			afterPrev := currStartS > prevEndS
@@ -71,7 +70,7 @@ func FindHomologies(
 				prevSegEnd := seg.End()
 				gap := qc - prevEndQ
 				seg.l = seg.l + gap + currLen
-				a := subject.Data()[prevSegEnd : prevSegEnd+gap]
+				a := e.T[prevSegEnd : prevSegEnd+gap]
 				b := query.Data()[prevEndQ : prevEndQ+gap]
 
 				for i := 0; i < gap; i++ {
@@ -223,14 +222,14 @@ func SegToFasta(segments []Seg,
 	return segfasta
 }
 
-// The function lcpAnchor accepts the following inputs: 1) pointer to the current match length; 2) start of the current match in the subject; 3) a map of segregation sites; 4) the minimum anchor length; 5) the current query prefix; 6) a pointer to the subject. The function returns a boolean. Regardless of the significance of the match, the function updates the start and the length of the current match.
+// The function lcpAnchor accepts the following inputs: 1) pointer to the current match length; 2) start of the current match in the subject; 3) a map of segregation sites; 4) the minimum anchor length; 5) the current query prefix; 6) a pointer to subject's ESA. The function returns a boolean. Regardless of the significance of the match, the function updates the start and the length of the current match.
 func lcpAnchor(currStartS, currLen *int,
 	prevStartS, prevLen int,
 	subjectLen, queryLen int,
 	qc, qp int,
 	a int,
 	queryPrefix []byte,
-	subject *fasta.Sequence) bool {
+	e *esa.Esa) bool {
 	advance := qc - qp
 	gap := advance - prevLen
 	tryS := prevStartS + advance
@@ -239,7 +238,7 @@ func lcpAnchor(currStartS, currLen *int,
 	}
 	*currStartS = tryS
 	newCurrLen := lcp(queryLen,
-		queryPrefix, subject.Data()[tryS:])
+		queryPrefix, e.T[tryS:])
 	*currLen = newCurrLen
 	return newCurrLen >= a
 }
