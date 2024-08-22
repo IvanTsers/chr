@@ -697,7 +697,7 @@ interpretation of pile heights unless match ends are not neglected
       shows pile heights of 4 (grey), indicating that these
       nucleotides are present at the same positions in all 4
       queries. The red line marks the right border of the segment
-      ending with \ty{GCTTTTGT}. If the pile heights were converted to
+      ending with \ty{TTTGT}. If the pile heights were converted to
       the final output without considering this border, it would
       produce a chimeric sequence, which is an incorrect result.}
     \label{fig:MatchEnds}
