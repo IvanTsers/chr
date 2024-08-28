@@ -4,9 +4,9 @@ import (
 	"github.com/evolbioinf/esa"
 	"github.com/evolbioinf/sus"
 	"github.com/ivantsers/fasta"
+	"math"
 	"math/rand"
 	"os"
-	"path/filepath"
 	"reflect"
 	"sort"
 	"testing"
@@ -19,60 +19,64 @@ func readFasta(path string) []*fasta.Sequence {
 	f.Close()
 	return contigs
 }
-func prepareSeq(path string) *fasta.Sequence {
-	contigs := readFasta(path)
-	for i, _ := range contigs {
-		contigs[i].Clean()
+func prepareSubject(path string) subject {
+	var subject subject
+	r := readFasta(path)
+	for i, _ := range r {
+		r[i].Clean()
 	}
-	seq := fasta.Concatenate(contigs, '!')
-	return seq
-}
-func prepareSubject(path string) (*esa.Esa, int) {
-	seq := prepareSeq(path)
-	rev := fasta.NewSequence("reverse", seq.Data())
+	subjectHeader := r[0].Header()
+	subjectData := r[0].Data()
+	contigHeaders := []string{subjectHeader}
+	contigSegs := []seg{newSeg(0, len(subjectData))}
+	cL := len(subjectData)
+	if len(r) > 1 {
+		for i := 1; i < len(r); i++ {
+			seq := r[i]
+			seqH := seq.Header()
+			seqD := seq.Data()
+			seqL := len(seqD)
+			contigHeaders = append(contigHeaders, seqH)
+			subjectData = append(subjectData, '!')
+			cL += 1
+			cseg := newSeg(cL, seqL)
+			contigSegs = append(contigSegs, cseg)
+			subjectData = append(subjectData, seqD...)
+			cL += seqL
+		}
+	}
+	atgc := 0.0
+	gc := 0.0
+	for _, c := range subjectData {
+		if c == 'A' || c == 'C' || c == 'G' || c == 'T' {
+			atgc++
+			if c == 'C' || c == 'G' {
+				gc++
+			}
+		}
+	}
+	gcContent := gc / atgc
+	minAncLen := sus.Quantile(cL, gcContent, 0.95)
+	rev := fasta.NewSequence("reverse", subjectData)
 	rev.ReverseComplement()
-	seq.SetData(append(seq.Data(), rev.Data()...))
-	sa := esa.MakeEsa(seq.Data())
-	gc := seq.GC()
-	ma := sus.Quantile(seq.Length()/2, gc, 0.95)
-	return sa, ma
+	subjectData = append(subjectData, rev.Data()...)
+	sa := esa.MakeEsa(subjectData)
+	subject.esa = sa
+	subject.totalL = len(subjectData)
+	subject.strandL = len(subjectData) / 2
+	subject.a = minAncLen
+	subject.contigHeaders = contigHeaders
+	subject.contigSegments = contigSegs
+	return subject
 }
-func approxAlignment(ref string, inFiles string) []*fasta.Sequence {
-	allFiles, _ := getFiles(inFiles)
-	queryNames := []string{}
-	for _, fileName := range allFiles {
-		if fileName != ref {
-			queryNames = append(queryNames, fileName)
-		}
-	}
-	numQueries := len(queryNames)
-	sa, ma := prepareSubject(ref)
-
-	allHomologies := []Seg{}
-	allSegsites := make(map[int]bool)
-
-	for _, q := range queryNames {
-		query := prepareSeq(q)
-		h, n := FindHomologies(query, sa, ma)
-		h = SortByStart(h)
-		h = ReduceOverlaps(h)
-		allHomologies = append(allHomologies, h...)
-		for pos, _ := range n {
-			allSegsites[pos] = true
-		}
-	}
-	intersection := Intersect(allHomologies,
-		numQueries, 1.0, len(sa.T)/2)
-
-	result := SegToFasta(intersection, sa, allSegsites, false)
-	return result
-}
-func getFiles(pattern string) ([]string, error) {
-	files, err := filepath.Glob(pattern)
-	if err != nil {
-		return nil, err
-	}
-	return files, nil
+func prepareQuery(path string) query {
+	var query query
+	q := readFasta(path)
+	qSeq := fasta.Concatenate(q, 0)
+	qSeq.Clean()
+	query.seq = qSeq.Data()
+	query.l = qSeq.Length()
+	return query
 }
 func containsData(slice []*fasta.Sequence,
 	el *fasta.Sequence) bool {
@@ -83,59 +87,46 @@ func containsData(slice []*fasta.Sequence,
 	}
 	return false
 }
-func TestSeg(t *testing.T) {
-	seg := NewSeg(1, 10)
-	want := 11
-	get := seg.End()
-	if get != want {
-		t.Errorf("want:\n%d\nget:\n%d\n",
-			want, get)
-	}
-	seg.l += 10
-	want += 10
-	get = seg.End()
-	if get != want {
-		t.Errorf("want:\n%d\nget:\n%d\n",
-			want, get)
-	}
-}
-func TestSortByStart(t *testing.T) {
+func TestSort(t *testing.T) {
 	var starts []int
-	var segments []Seg
+	var segments []seg
 	for i := 0; i < 12; i++ {
 		rand.Seed(time.Now().UnixNano())
 		rs := rand.Intn(1000000000)
 		rl := 1 + rand.Intn(999999999)
 		starts = append(starts, rs)
-		segments = append(segments, NewSeg(rs, rl))
+		segments = append(segments, newSeg(rs, rl))
 	}
-	sorted := SortByStart(segments)
+	h := Homologs{S: segments, N: make(map[int]bool)}
+	hSorted := h.sort()
 	sort.Ints(starts)
 	for _, i := range [3]int{0, 5, 11} {
 		want := starts[i]
-		get := sorted[i].s
+		get := hSorted.S[i].s
 		if want != get {
 			t.Errorf("want:\n%d\nget:\n%d\n",
 				want, get)
 		}
 	}
-	x := NewSeg(12, 221)
+	x := newSeg(12, 221)
 	testCases := []struct {
 		name  string
-		input []Seg
-		want  []Seg
+		input []seg
+		want  []seg
 	}{
-		{"Empty", []Seg{}, []Seg{}},
-		{"Single element", []Seg{x}, []Seg{x}},
-		{"Identical", []Seg{x, x, x, x}, []Seg{x, x, x, x}},
-		{"Already sorted", sorted, sorted},
+		{"Empty", []seg{}, []seg{}},
+		{"Single element", []seg{x}, []seg{x}},
+		{"Identical", []seg{x, x, x, x}, []seg{x, x, x, x}},
+		{"Already sorted", hSorted.S, hSorted.S},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			inputCopy := make([]Seg, len(tc.input))
+			inputCopy := make([]seg, len(tc.input))
 			copy(inputCopy, tc.input)
-			get := SortByStart(inputCopy)
+			h.S = inputCopy
+			hSort := h.sort()
+			get := hSort.S
 			if !reflect.DeepEqual(get, tc.want) {
 				t.Errorf("want:\n%v\nget:\n%v\n",
 					tc.want, get)
@@ -144,41 +135,43 @@ func TestSortByStart(t *testing.T) {
 	}
 }
 func TestReduceOverlaps(t *testing.T) {
-	x := NewSeg(0, 10)
-	y := NewSeg(5, 10)
-	z := NewSeg(5, 20)
-	a := NewSeg(21, 2)
-	b := NewSeg(25, 5)
-	c := NewSeg(27, 1)
-	d := NewSeg(30, 5)
-	e := NewSeg(35, 10)
-	f := NewSeg(50, 2)
-	g := NewSeg(0, 5)
+	x := newSeg(0, 10)
+	y := newSeg(5, 10)
+	z := newSeg(5, 20)
+	a := newSeg(21, 2)
+	b := newSeg(25, 5)
+	c := newSeg(27, 1)
+	d := newSeg(30, 5)
+	e := newSeg(35, 10)
+	f := newSeg(50, 2)
+	g := newSeg(0, 5)
 	testCases := []struct {
 		name  string
-		input []Seg
-		want  []Seg
+		input []seg
+		want  []seg
 	}{
-		{"Empty", []Seg{}, []Seg{}},
-		{"Sinlge", []Seg{x}, []Seg{x}},
-		{"Perfect overlap", []Seg{x, x}, []Seg{x}},
-		{"Partial overlap same len", []Seg{x, y}, []Seg{x}},
-		{"Partial overlap diff len", []Seg{x, z}, []Seg{z}},
-		{"Various", []Seg{g, x, y, z, a, b, c, d, e, f},
-			[]Seg{g, z, b, d, e, f}},
+		{"Empty", []seg{}, []seg{}},
+		{"Sinlge", []seg{x}, []seg{x}},
+		{"Perfect overlap", []seg{x, x}, []seg{x}},
+		{"Partial overlap same len", []seg{x, y}, []seg{x}},
+		{"Partial overlap diff len", []seg{x, z}, []seg{z}},
+		{"Various", []seg{g, x, y, z, a, b, c, d, e, f},
+			[]seg{g, z, b, d, e, f}},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			inputCopy := make([]Seg, len(tc.input))
+			inputCopy := make([]seg, len(tc.input))
 			copy(inputCopy, tc.input)
-			get := ReduceOverlaps(inputCopy)
+			h := Homologs{S: inputCopy, N: make(map[int]bool)}
+			h.reduceOverlaps()
+			get := h.S
 			if !reflect.DeepEqual(get, tc.want) {
 				t.Errorf("\nwant:\n%v\nget:\n%v\n", tc.want, get)
 			}
 		})
 	}
 }
-func TestFindHomologies(t *testing.T) {
+func TestFindHomologs(t *testing.T) {
 	identical := readFasta("data/o/identical.fasta")
 	tooDistant := readFasta("data/o/tooDistant.fasta")
 	s1q1 := readFasta("data/o/s1q1.fasta")
@@ -207,13 +200,12 @@ func TestFindHomologies(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			sa, ma := prepareSubject("data/s/" + tc.input)
-			q := prepareSeq("data/q/" + tc.input)
-			h, n := FindHomologies(q, sa, ma)
-			h = SortByStart(h)
-			h = ReduceOverlaps(h)
-			get := SegToFasta(h, sa, n, false)
-			PrintSegsiteRanges(n, h, os.Stdout)
+			subject := prepareSubject("data/s/" + tc.input)
+			query := prepareQuery("data/q/" + tc.input)
+			h := findHomologs(query, subject)
+			h.reduceOverlaps()
+			get := homologsToFasta(h, subject, false, true)
+			PrintSegsiteRanges(h, os.Stdout, false)
 			for i := range get {
 				if !reflect.DeepEqual(get[i].Data(),
 					tc.want[i].Data()) {
@@ -225,18 +217,19 @@ func TestFindHomologies(t *testing.T) {
 		})
 	}
 }
-func TestIntersect(t *testing.T) {
+func TestPileToSeg(t *testing.T) {
 	slen := 10
-	a := NewSeg(0, 2)
-	b := NewSeg(0, 3)
-	c := NewSeg(1, 2)
-	d := NewSeg(3, 5)
-	e := NewSeg(5, 2)
-	f := NewSeg(4, 4)
-	g := NewSeg(8, 1)
-	h := []Seg{a, b, a, a, c,
+	a := newSeg(0, 2)
+	b := newSeg(0, 3)
+	c := newSeg(1, 2)
+	d := newSeg(3, 5)
+	e := newSeg(5, 2)
+	f := newSeg(4, 4)
+	g := newSeg(8, 1)
+	segments := []seg{a, b, a, a, c,
 		d, f, e, e, f, g,
 	}
+	h := Homologs{S: segments, N: make(map[int]bool)}
 	t.Run("pileHeights", func(t *testing.T) {
 		want := []int{4, 5, 2, 1, 3, 5, 5, 3, 1, 0}
 		get := pileHeights(h, slen)
@@ -244,15 +237,15 @@ func TestIntersect(t *testing.T) {
 			t.Errorf("\nwant:\n%v\nget:\n%v\n", want, get)
 		}
 	})
-	zero := []Seg{NewSeg(0, 3), NewSeg(3, 5), NewSeg(8, 1)}
-	forty := []Seg{NewSeg(0, 3), NewSeg(4, 4)}
-	sixty := []Seg{NewSeg(0, 2), NewSeg(4, 4)}
-	eighty := []Seg{NewSeg(0, 2), NewSeg(5, 2)}
-	hundred := []Seg{NewSeg(1, 1), NewSeg(5, 2)}
+	zero := []seg{newSeg(0, 3), newSeg(3, 5), newSeg(8, 1)}
+	forty := []seg{newSeg(0, 3), newSeg(4, 4)}
+	sixty := []seg{newSeg(0, 2), newSeg(4, 4)}
+	eighty := []seg{newSeg(0, 2), newSeg(5, 2)}
+	hundred := []seg{newSeg(1, 1), newSeg(5, 2)}
 	testCases := []struct {
 		name      string
 		threshold float64
-		want      []Seg
+		want      []seg
 	}{
 		{"0%", 0.0, zero},
 		{"10%", 0.1, zero},
@@ -266,14 +259,20 @@ func TestIntersect(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			want := tc.want
-			get := Intersect(h, 5, tc.threshold, slen)
+			p := pileHeights(h, slen)
+			isAdj := makeMapAdj(h)
+			threshold := int(math.Floor(tc.threshold * 5.0))
+			if threshold == 0 {
+				threshold = 1
+			}
+			get := pileToSeg(p, threshold, isAdj)
 			if !reflect.DeepEqual(want, get) {
 				t.Errorf("\nwant:\n%v\nget:\n%v\n", want, get)
 			}
 		})
 	}
 }
-func TestAlignment(t *testing.T) {
+func TestIntersect(t *testing.T) {
 	stan := readFasta("data/o/stan.fasta")
 	sars := readFasta("data/o/sars.fasta")
 
@@ -289,7 +288,15 @@ func TestAlignment(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			want := tc.want
-			get := approxAlignment("data/i/"+tc.name+"/t1.fasta", tc.input)
+			r := readFasta("data/i/" + tc.name + "/t1.fasta")
+			parameters := Parameters{
+				Reference:     r,
+				TargetDir:     "data/i/" + tc.name + "/t",
+				Threshold:     1.0,
+				PrintN:        false,
+				PrintOneBased: true,
+			}
+			get := Intersect(parameters)
 			wL := len(want)
 			gL := len(get)
 			minLen := gL

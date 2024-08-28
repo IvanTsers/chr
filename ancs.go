@@ -3,126 +3,69 @@ package ancs
 import (
 	"fmt"
 	"github.com/evolbioinf/esa"
+	"github.com/evolbioinf/sus"
 	"github.com/ivantsers/fasta"
 	"math"
 	"os"
 	"sort"
 )
 
-// Data type Seg contains a zero-based start and length of a segment.
-type Seg struct {
+// Homologs are homologous regions of the subject found in the queries. This data type contains a slice of segments of the subject S and a map of segregation sites N.
+type Homologs struct {
+	S []seg
+	N map[int]bool
+}
+type seg struct {
 	s int
 	l int
 }
-
-// Method End() returns an inclusive coordinate of the end of a segment.
-func (seg *Seg) End() int {
-	return seg.s + seg.l
+type subject struct {
+	esa            *esa.Esa
+	totalL         int
+	strandL        int
+	a              int
+	contigHeaders  []string
+	contigSegments []seg
+}
+type query struct {
+	seq    []byte
+	l      int
+	prefix []byte
+}
+type match struct {
+	l      int
+	startS int
+	startQ int
+	endS   int
+	endQ   int
 }
 
-// Constructor method NewSeg() returns a segment of specified start and length.
-func NewSeg(x, y int) Seg {
-	return Seg{s: x, l: y}
+// The fields of this data structure contain parameters used to call Intersect(). The parameters include: 1) a reference; 2) path to the directory of target genomes minus the reference; 3) threshold, the minimum fraction of intersecting genomes; 4) a switch to print N at the positions of mismatches; 5) a switch to print one-based coordinates.
+type Parameters struct {
+	Reference     []*fasta.Sequence
+	TargetDir     string
+	Threshold     float64
+	PrintN        bool
+	PrintOneBased bool
 }
 
-// SortByStart accepts a slice of segments s and sorts the segments by their start positions in ascending order.
-func SortByStart(s []Seg) []Seg {
-	sort.Slice(s, func(i, j int) bool {
-		return s[i].s < s[j].s
-	})
-	return s
-}
-
-// The function FindHomologies accepts a query sequence, an enhanced suffix array of the subject, and the minimum anchor length a. The function returns a slice of segments (homologous regions, or homologies) and a bool map of segregation sites found within the homologies. If no homologies have been found, an empty slice of segments and empty map of segregation sites are returned.
-func FindHomologies(
-	query *fasta.Sequence,
-	e *esa.Esa,
-	a int) ([]Seg, map[int]bool) {
-	var qc, qp int
-	var currLen, currStartS int
-	var prevLen, prevStartS, prevEndS int
-	var seg Seg
-	var h []Seg
-	n := make(map[int]bool)
-	rightAnchor := false
-	subjectLen := len(e.T)
-	subjectStrandLen := subjectLen / 2
-	queryLen := query.Length()
-	for qc < queryLen {
-		queryPrefix := query.Data()[qc:queryLen]
-		if lcpAnchor(&currStartS, &currLen,
-			prevStartS, prevLen,
-			subjectLen, queryLen, qc, qp,
-			a, queryPrefix, e) || esaAnchor(&currStartS, &currLen, a, queryPrefix, e) {
-			prevEndQ := qp + prevLen
-			prevEndS = prevStartS + prevLen
-			afterPrev := currStartS > prevEndS
-
-			areEquidist := qc-prevEndQ == currStartS-prevEndS
-
-			onSameStrand := (currStartS < subjectStrandLen) ==
-				(prevStartS < subjectStrandLen)
-
-			segCanBeExtended := afterPrev &&
-				areEquidist &&
-				onSameStrand
-			if segCanBeExtended {
-				prevSegEnd := seg.End()
-				gap := qc - prevEndQ
-				seg.l = seg.l + gap + currLen
-				a := e.T[prevSegEnd : prevSegEnd+gap]
-				b := query.Data()[prevEndQ : prevEndQ+gap]
-
-				for i := 0; i < gap; i++ {
-					if a[i] != b[i] {
-						n[prevSegEnd+i] = true
-					}
-				}
-				rightAnchor = true
-			} else {
-				if rightAnchor || prevLen/2 >= a {
-					if seg.s > subjectStrandLen {
-						seg.s = subjectLen + 1 - seg.s - seg.l
-
-					}
-					h = append(h, seg)
-				}
-				seg.s = currStartS
-				seg.l = currLen
-				rightAnchor = false
-			}
-			qp = qc
-			prevLen = currLen
-			prevStartS = currStartS
-		}
-		qc = qc + currLen + 1
+func (h *Homologs) reduceOverlaps() {
+	slen := len(h.S)
+	if slen < 2 {
+		return
 	}
-	//Close the last segment if open:
-	if rightAnchor || prevLen/2 >= a {
-		if seg.s > subjectStrandLen {
-			seg.s = subjectLen + 1 - seg.s - seg.l
-		}
-		h = append(h, seg)
-	}
-	return h, n
-}
-
-// ReduceOverlaps() accepts a sorted slice of segments
-func ReduceOverlaps(h []Seg) []Seg {
-	hlen := len(h)
-	if hlen < 2 {
-		return h
-	}
-	predecessor := make([]int, hlen)
-	score := make([]int, hlen)
-	visited := make([]bool, hlen)
-	score[0] = h[0].l
+	h.sort()
+	segs := h.S
+	predecessor := make([]int, slen)
+	score := make([]int, slen)
+	visited := make([]bool, slen)
+	score[0] = segs[0].l
 	predecessor[0] = -1
-	for i := 1; i < hlen; i++ {
+	for i := 1; i < slen; i++ {
 		maxScore := 0
 		maxIndex := -1
 		for k := 0; k < i; k++ {
-			if h[k].End() <= h[i].s {
+			if segs[k].end() <= segs[i].s {
 				if score[k] > maxScore {
 					maxScore = score[k]
 					maxIndex = k
@@ -131,141 +74,38 @@ func ReduceOverlaps(h []Seg) []Seg {
 		}
 		predecessor[i] = maxIndex
 		if maxIndex != -1 {
-			score[i] = h[i].l + score[maxIndex]
+			score[i] = segs[i].l + score[maxIndex]
 		} else {
-			score[i] = h[i].l
+			score[i] = segs[i].l
 		}
 	}
-	// Debug messages. Will be removed in the future
-	//fmt.Fprintln(os.Stderr, "***Homologies:")
-	//for _, el := range(h) {
-	//      fmt.Fprintf(os.Stderr, "***(%d, %d)\n", el.s, el.End())
-	//}
-	//fmt.Fprintln(os.Stderr, "***Scores:", score)
 	s := argmax(score)
 	for s != -1 {
 		visited[s] = true
 		s = predecessor[s]
 	}
-	var hred []Seg
-	for i := 0; i < len(h); i++ {
+	var segred []seg
+	for i := 0; i < slen; i++ {
 		if visited[i] {
-			hred = append(hred, h[i])
+			segred = append(segred, segs[i])
 		}
 	}
-	return hred
+	h.S = segred
 }
-
-// TotalSegLen() accepts a slice of segments and returns their total length.
-func TotalSegLen(segments []Seg) int {
-	sumlen := 0
-	for _, s := range segments {
-		sumlen += s.l
-	}
-	return sumlen
+func (seg *seg) end() int {
+	return seg.s + seg.l
 }
-
-// PrintSegSiteRanges() accepts a bool map of Ns (segregation sites), a slice of segments, and a pointer to an output file, and prints segregation site coordinate ranges.
-func PrintSegsiteRanges(n map[int]bool,
-	h []Seg, file *os.File) {
-	if len(n) == 0 {
-		fmt.Fprintf(file, "No segregation sites found\n")
-	} else {
-		for _, seg := range h {
-			k := []int{-1}
-			for i := seg.s; i < seg.End(); i++ {
-				if n[i] {
-					k = append(k, i-seg.s+1)
-				}
-			}
-			k = append(k, -1)
-			for i := 1; i < len(k)-1; i++ {
-				prev := k[i] == k[i-1]+1
-				next := k[i] == k[i+1]-1
-				if prev && next {
-					continue
-				}
-				if next {
-					fmt.Fprintf(file, "[%d", k[i]+1)
-				} else if prev {
-					fmt.Fprintf(file, ":%d] ", k[i]+1)
-				} else {
-					fmt.Fprintf(file, "%d ", k[i]+1)
-				}
-			}
-			fmt.Fprintf(file, "\n")
-		}
-	}
+func newSeg(x, y int) seg {
+	return seg{s: x, l: y}
 }
-
-// SegToFasta() converts a slice of segments into actual fasta sequences. It accepts a slice of segments, a pointer to the corresponding ESA, a map of Ns, and a bool toggle for printing Ns. It returns a slice of pointers to fasta entries (type fasta.Sequence).
-func SegToFasta(segments []Seg,
-	e *esa.Esa,
-	n map[int]bool,
-	printNs bool) []*fasta.Sequence {
-	var segfasta []*fasta.Sequence
-	for i, s := range segments {
-		start := s.s
-		end := s.End()
-		data := make([]byte, 0, end-start)
-		for j := start; j < end; j++ {
-			if printNs && n[j] {
-				data = append(data, 'N')
-			} else {
-				data = append(data, e.T[j])
-			}
-		}
-		segname := fmt.Sprintf("Segment_%d (%d..%d)", i+1, start+1, end+1)
-		converted := fasta.NewSequence(segname, data)
-		segfasta = append(segfasta, converted)
-	}
-	return segfasta
+func (q *query) updPrefix(x int) {
+	q.prefix = q.seq[x:]
 }
-
-// The function lcpAnchor accepts the following inputs: 1) pointer to the current match length; 2) start of the current match in the subject; 3) a map of segregation sites; 4) the minimum anchor length; 5) the current query prefix; 6) a pointer to subject's ESA. The function returns a boolean. Regardless of the significance of the match, the function updates the start and the length of the current match.
-func lcpAnchor(currStartS, currLen *int,
-	prevStartS, prevLen int,
-	subjectLen, queryLen int,
-	qc, qp int,
-	a int,
-	queryPrefix []byte,
-	e *esa.Esa) bool {
-	advance := qc - qp
-	gap := advance - prevLen
-	tryS := prevStartS + advance
-	if tryS >= subjectLen || gap > a {
-		return false
-	}
-	*currStartS = tryS
-	newCurrLen := lcp(queryLen,
-		queryPrefix, e.T[tryS:])
-	*currLen = newCurrLen
-	return newCurrLen >= a
-}
-func lcp(max int, a, b []byte) int {
-	count := 0
-	for i := 0; i < max; i++ {
-		if i >= len(a) || i >= len(b) || a[i] != b[i] {
-			break
-		}
-		count++
-	}
-	return count
-}
-
-// The function anchorEsa() accepts: 1) a pointer to the current match length; 2) start of the match the subject; 3) a map of segregation sites; 4) the minimum anchor length; 5) the current query prefix; 6) a pointer to the subject ESA. The function returns a boolean. Regardless of the significance of the match, the function updates the start and the length of the current match.
-func esaAnchor(
-	currStartS, currLen *int,
-	a int,
-	queryPrefix []byte,
-	e *esa.Esa) bool {
-	mc := e.MatchPref(queryPrefix)
-	newStartS := e.Sa[mc.I]
-	newCurrLen := mc.L
-	*currStartS = newStartS
-	*currLen = newCurrLen
-	lu := (mc.J == mc.I) && (newCurrLen >= a)
-	return lu
+func (h *Homologs) sort() *Homologs {
+	sort.Slice(h.S, func(i, j int) bool {
+		return h.S[i].s < h.S[j].s
+	})
+	return h
 }
 func argmax(x []int) int {
 	maxIdx := 0
@@ -277,18 +117,211 @@ func argmax(x []int) int {
 	return maxIdx
 }
 
-// The function Intersect accept a slice of segments and finds coordinates of intersecting segments, which cover a given fraction of target genomes.
-func Intersect(h []Seg, g int, f float64, slen int) []Seg {
-	t := int(math.Floor(f * float64(g)))
-	if t == 0 {
-		t = 1
+// The function Intersect accepts a struct of Parameters and returns sequences of homologous regions, common for the reference and the query sequences.
+func Intersect(parameters Parameters) []*fasta.Sequence {
+	r := parameters.Reference
+	d := parameters.TargetDir
+	numFiles := 0
+	dirEntries, err := os.ReadDir(d)
+	if err != nil {
+		fmt.Fprintf(os.Stderr,
+			"chr.Intersect: error reading %v: %v", d, err)
+		os.Exit(1)
 	}
-	p := pileHeights(h, slen)
+	numFiles = len(dirEntries)
+	if numFiles == 0 {
+		return r
+	} else {
+		var subject subject
+		for i, _ := range r {
+			r[i].Clean()
+		}
+		subjectHeader := r[0].Header()
+		subjectData := r[0].Data()
+		contigHeaders := []string{subjectHeader}
+		contigSegs := []seg{newSeg(0, len(subjectData))}
+		cL := len(subjectData)
+		if len(r) > 1 {
+			for i := 1; i < len(r); i++ {
+				seq := r[i]
+				seqH := seq.Header()
+				seqD := seq.Data()
+				seqL := len(seqD)
+				contigHeaders = append(contigHeaders, seqH)
+				subjectData = append(subjectData, '!')
+				cL += 1
+				cseg := newSeg(cL, seqL)
+				contigSegs = append(contigSegs, cseg)
+				subjectData = append(subjectData, seqD...)
+				cL += seqL
+			}
+		}
+		atgc := 0.0
+		gc := 0.0
+		for _, c := range subjectData {
+			if c == 'A' || c == 'C' || c == 'G' || c == 'T' {
+				atgc++
+				if c == 'C' || c == 'G' {
+					gc++
+				}
+			}
+		}
+		gcContent := gc / atgc
+		minAncLen := sus.Quantile(cL, gcContent, 0.95)
+		rev := fasta.NewSequence("reverse", subjectData)
+		rev.ReverseComplement()
+		subjectData = append(subjectData, rev.Data()...)
+		sa := esa.MakeEsa(subjectData)
+		subject.esa = sa
+		subject.totalL = len(subjectData)
+		subject.strandL = len(subjectData) / 2
+		subject.a = minAncLen
+		subject.contigHeaders = contigHeaders
+		subject.contigSegments = contigSegs
+		homologs := Homologs{S: []seg{}, N: make(map[int]bool)}
+		for _, entry := range dirEntries {
+			var query query
+			filePath := d + "/" + entry.Name()
+			f, _ := os.Open(filePath)
+			queryData := fasta.ReadAll(f)
+			f.Close()
+			qSeq := fasta.Concatenate(queryData, 0)
+			qSeq.Clean()
+			query.seq = qSeq.Data()
+			query.l = qSeq.Length()
+			h := findHomologs(query, subject)
+			homologs.S = append(homologs.S, h.S...)
+			for pos, _ := range h.N {
+				homologs.N[pos] = true
+			}
+		}
+		f := parameters.Threshold
+		g := numFiles
+		t := int(math.Floor(f * float64(g)))
+		if t == 0 {
+			t = 1
+		}
+		p := pileHeights(homologs, subject.strandL)
+		isAdj := makeMapAdj(homologs)
+		intersection := pileToSeg(p, t, isAdj)
+		homologs.S = intersection
+		printN := parameters.PrintN
+		printOneBased := parameters.PrintOneBased
+		result := homologsToFasta(homologs, subject, printN, printOneBased)
+		return result
+	}
+}
+func findHomologs(query query, subject subject) Homologs {
+	h := Homologs{S: []seg{}, N: make(map[int]bool)}
+	var qc, qp int
+	var c, p match
+	var seg seg
+	rightAnchor := false
+	for qc < query.l {
+		query.updPrefix(qc)
+		if lcpAnchor(&c, &p, query, subject, qc, qp) || esaAnchor(&c, query, subject) {
+			p.endQ = qp + p.l
+			p.endS = p.startS + p.l
+			afterPrev := c.startS > p.endS
+
+			areEquidist := qc-p.endQ == c.startS-p.endS
+
+			onSameStrand := (c.startS < subject.strandL) ==
+				(p.startS < subject.strandL)
+
+			segCanBeExtended := afterPrev &&
+				areEquidist &&
+				onSameStrand
+			if segCanBeExtended {
+				prevSegEnd := seg.end()
+				gapLen := qc - p.endQ
+				seg.l = seg.l + gapLen + c.l
+				gapSeqSubject := subject.esa.T[prevSegEnd : prevSegEnd+gapLen]
+				gapSeqQuery := query.seq[p.endQ : p.endQ+gapLen]
+				for i := 0; i < gapLen; i++ {
+					if gapSeqSubject[i] != gapSeqQuery[i] {
+						h.N[prevSegEnd+i] = true
+					}
+				}
+				rightAnchor = true
+			} else {
+				if rightAnchor || p.l/2 >= subject.a {
+					if seg.s > subject.strandL {
+						seg.s = subject.totalL + 1 - seg.s - seg.l
+
+					}
+					h.S = append(h.S, seg)
+				}
+				seg.s = c.startS
+				seg.l = c.l
+				rightAnchor = false
+			}
+			qp = qc
+			p.l = c.l
+			p.startS = c.startS
+		}
+		qc = qc + c.l + 1
+	}
+	//Close the last segment if open:
+	if rightAnchor || p.l/2 >= subject.a {
+		if seg.s > subject.strandL {
+			seg.s = subject.totalL + 1 - seg.s - seg.l
+		}
+		h.S = append(h.S, seg)
+	}
+	h.reduceOverlaps()
+	return h
+}
+func lcpAnchor(c *match, p *match,
+	query query, subject subject,
+	qc, qp int) bool {
+	advance := qc - qp
+	gap := advance - p.l
+	tryS := p.startS + advance
+	if tryS >= subject.totalL || gap > subject.a {
+		return false
+	}
+	c.startS = tryS
+	newL := lcp(query.l, query.prefix, subject.esa.T[tryS:])
+	c.l = newL
+	return newL >= subject.a
+}
+func lcp(max int, a, b []byte) int {
+	count := 0
+	for i := 0; i < max; i++ {
+		if i >= len(a) || i >= len(b) || a[i] != b[i] {
+			break
+		}
+		count++
+	}
+	return count
+}
+func esaAnchor(c *match, query query, subject subject) bool {
+	mc := subject.esa.MatchPref(query.prefix)
+	newStartS := subject.esa.Sa[mc.I]
+	newL := mc.L
+	c.startS = newStartS
+	c.l = newL
+	lu := (mc.J == mc.I) && (newL >= subject.a)
+	return lu
+}
+func pileHeights(h Homologs, strandL int) []int {
+	pile := make([]int, strandL)
+	for i := 0; i < len(h.S); i++ {
+		seg := h.S[i]
+		for j := seg.s; j < seg.end(); j++ {
+			pile[j] += 1
+		}
+	}
+	return pile
+}
+func makeMapAdj(h Homologs) map[int]bool {
 	starts := make(map[int]bool)
 	ends := []int{}
-	for i := 0; i < len(h); i++ {
-		starts[h[i].s] = true
-		ends = append(ends, h[i].End())
+	for i := 0; i < len(h.S); i++ {
+		seg := h.S[i]
+		starts[seg.s] = true
+		ends = append(ends, seg.end())
 	}
 	isAdj := make(map[int]bool)
 	for _, e := range ends {
@@ -296,32 +329,21 @@ func Intersect(h []Seg, g int, f float64, slen int) []Seg {
 			isAdj[e] = true
 		}
 	}
-	intersection := pileToSeg(p, t, isAdj)
-	return intersection
+	return isAdj
 }
-func pileHeights(h []Seg, slen int) []int {
-	pile := make([]int, slen)
-	for i := 0; i < len(h); i++ {
-		seg := h[i]
-		for j := seg.s; j < seg.End(); j++ {
-			pile[j] += 1
-		}
-	}
-	return pile
-}
-func pileToSeg(p []int, t int, isAdj map[int]bool) []Seg {
-	var seg Seg
-	var h []Seg
+func pileToSeg(p []int, t int, isAdj map[int]bool) []seg {
+	var segs []seg
+	var seg seg
 	segIsOpen := false
 	for k, v := range p {
 		if segIsOpen {
 			if v < t {
-				h = append(h, seg)
+				segs = append(segs, seg)
 				segIsOpen = false
 			} else {
 				seg.l += 1
 				if isAdj[k+1] {
-					h = append(h, seg)
+					segs = append(segs, seg)
 					segIsOpen = false
 				}
 			}
@@ -334,7 +356,90 @@ func pileToSeg(p []int, t int, isAdj map[int]bool) []Seg {
 		}
 	}
 	if segIsOpen {
-		h = append(h, seg)
+		segs = append(segs, seg)
 	}
-	return h
+	return segs
+}
+func homologsToFasta(h Homologs, subject subject,
+	printN bool, printOneBased bool) []*fasta.Sequence {
+	var sequences []*fasta.Sequence
+	segs := h.S
+	ns := h.N
+	for _, seg := range segs {
+		start := seg.s
+		end := seg.end()
+		data := make([]byte, 0, seg.l)
+		for j := start; j < end; j++ {
+			if printN && ns[j] {
+				data = append(data, 'N')
+			} else {
+				data = append(data, subject.esa.T[j])
+			}
+		}
+		ch, cs, ce := findSegment(seg, subject)
+		if printOneBased {
+			cs += 1
+			ce += 1
+		}
+		header := fmt.Sprintf("%s (%d..%d)", ch, cs, ce)
+		seq := fasta.NewSequence(header, data)
+		sequences = append(sequences, seq)
+	}
+	return sequences
+}
+func findSegment(seg seg, subject subject) (string, int, int) {
+	var ch string
+	var cs, ce int
+	contigHeaders := subject.contigHeaders
+	contigSegments := subject.contigSegments
+	for i, contigSeg := range contigSegments {
+		if isWithin(seg, contigSeg) {
+			ch = contigHeaders[i]
+			cs = seg.s - contigSeg.s + 1
+			ce = cs + seg.l
+			break
+		}
+	}
+	return ch, cs, ce
+}
+func isWithin(in seg, out seg) bool {
+	return in.s >= out.s && in.end() <= out.end()
+}
+
+// PrintSegsiteRanges accepts a struct of Homologs, a pointer to an output file, and a switch for printing one-based coordinates. It prints segregation site coordinate ranges.
+func PrintSegsiteRanges(h Homologs, file *os.File, printOneBased bool) {
+	segs := h.S
+	ns := h.N
+	if len(ns) == 0 {
+		fmt.Fprintf(file, "No segregation sites found\n")
+	} else {
+		for _, seg := range segs {
+			k := []int{-1}
+			for i := seg.s; i < seg.end(); i++ {
+				if ns[i] {
+					k = append(k, i-seg.s+1)
+				}
+			}
+			k = append(k, -1)
+			for i := 1; i < len(k)-1; i++ {
+				prev := k[i] == k[i-1]+1
+				next := k[i] == k[i+1]-1
+				if prev && next {
+					continue
+				}
+				coord := k[i]
+				if printOneBased {
+					coord = k[i] + 1
+				}
+				if next {
+					fmt.Fprintf(file, "[%d", coord)
+				} else if prev {
+					fmt.Fprintf(file, ":%d] ", coord)
+				} else {
+					fmt.Fprintf(file, "%d ", coord)
+				}
+			}
+			fmt.Fprintf(file, "\n")
+		}
+	}
 }
