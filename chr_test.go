@@ -1,4 +1,4 @@
-package ancs
+package chr
 
 import (
 	"github.com/evolbioinf/esa"
@@ -122,9 +122,7 @@ func TestSort(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			inputCopy := make([]seg, len(tc.input))
-			copy(inputCopy, tc.input)
-			h.S = inputCopy
+			h.S = tc.input
 			hSort := h.sort()
 			get := hSort.S
 			if !reflect.DeepEqual(get, tc.want) {
@@ -152,6 +150,7 @@ func TestReduceOverlaps(t *testing.T) {
 	}{
 		{"Empty", []seg{}, []seg{}},
 		{"Sinlge", []seg{x}, []seg{x}},
+		{"No overlap", []seg{x, f}, []seg{x, f}},
 		{"Perfect overlap", []seg{x, x}, []seg{x}},
 		{"Partial overlap same len", []seg{x, y}, []seg{x}},
 		{"Partial overlap diff len", []seg{x, z}, []seg{z}},
@@ -160,9 +159,7 @@ func TestReduceOverlaps(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			inputCopy := make([]seg, len(tc.input))
-			copy(inputCopy, tc.input)
-			h := Homologs{S: inputCopy, N: make(map[int]bool)}
+			h := Homologs{S: tc.input, N: make(map[int]bool)}
 			h.reduceOverlaps()
 			get := h.S
 			if !reflect.DeepEqual(get, tc.want) {

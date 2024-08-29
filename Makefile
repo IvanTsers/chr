@@ -1,4 +1,4 @@
-EXE = ancs
+EXE = chr
 
 all: $(EXE)
 

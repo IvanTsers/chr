@@ -1,15 +1,46 @@
 \section{Introduction}
-A local alignment of two similar nucleotide sequences can be
-approximated as long exact matches (\ty{anchors}) separated by
-mismatches. The use of enhanced suffix arrays (ESA) for finding the
-exact matches makes such an approximation fast compared to an actual
-alignment. The anchor-based comparison of whole genomes was
-implemented in a number of programs
-including \ty{andi}~\cite{hau15:and} \ty{phylonium}~\cite{kloe19:phy},
-which are used for fast computation of evolutionary distances. In
-addition, the method is used for finding intersections between
-multiple target genomes in the program \texttt{fur}~\cite{hau21:fur}.
 
-The package \ty{ancs} contains functions for anchor-based
-approximation of local alignments.
+Studying the similarity among closely related genomes is a major task
+in comparative genomics. Conventionally, genomes are globally aligned
+to identify common homologous regions, which can then be analyzed
+further, for example, to calculate phylogenetic distances or perform
+functional annotation. However, aligning multiple genomes can be both
+resource-intensive and time-consuming, especially when dealing with
+entire genomes.
+
+A global alignment between two sequences can be approximated as a
+series of long, gapless exact matches (called anchors) separated by
+mismatches. Using enhanced suffix arrays (ESA) to find these exact
+matches makes such an approximation fast compared to an actual
+alignment (Figure~\ref{fig:Intro1}).
+
+\begin{figure}[H]
+  \centering
+    \includegraphics[width=0.5\linewidth]{figIntro1.eps}
+    \caption{Conceptual comparison of a global alignment (GA) of two
+      sequences ($S_1$ and $S_2$) and anchor-based alignment
+      approximation (AA). The GA of these sequences can be understood
+      as a process that aims to maximize the coverage of $S_2$ with
+      nucleotides from the sequence $S_1$ that match. GA contains gaps
+      shown with a thinner line. In contrast, AA approximates the
+      alignment using a series of gapless 'local alignments' that
+      consist of exact matches shown as regions of $S_2$ separeted
+      with mismatches (mutations) shown in darker grey. While AA is
+      not identical to GA, it captures the key similarities
+      (\textit{homologous regions}), between the sequences.}
+    \label{fig:Intro1}
+\end{figure}
+
+Such an anchor-based approach has been implemented in various
+programs, such as \ty{andi}~\cite{hau15:and} and
+\ty{phylonium}~\cite{kloe19:phy}, which are used for quickly
+calculating evolutionary distances. The program
+\texttt{fur}~\cite{hau21:fur} also uses this method in its
+Intersection step to identify common regions across multiple genomes.
+
+The \ty{chr} package, which stands for 'common homologous regions' is
+designed to approximate global multi-sequence alignments using
+exact-match-based anchors. Its primary function is \ty{Intersect},
+which is used to find common homologous regions in multiple similar
+genomes.
 \newpage

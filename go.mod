@@ -1,4 +1,4 @@
-module github.com/ivantsers/ancs
+module github.com/ivantsers/chr
 
 go 1.21.5
 
