@@ -1,4 +1,4 @@
-NAME = ancs
+NAME = chr
 all: $(NAME)Doc.pdf
 	latex $(NAME)Doc
 	bibtex $(NAME)Doc

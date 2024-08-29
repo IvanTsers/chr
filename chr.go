@@ -1,4 +1,4 @@
-package ancs
+package chr
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 	"sort"
 )
 
-// Homologs are homologous regions of the subject found in the queries. This data type contains a slice of segments of the subject S and a map of segregation sites N.
+// Data structure Homologs describes homologous regions of a subject found in queries. This data type contains a slice of segments of the subject S and a map of segregation sites N.
 type Homologs struct {
 	S []seg
 	N map[int]bool
@@ -30,7 +30,7 @@ type subject struct {
 type query struct {
 	seq    []byte
 	l      int
-	prefix []byte
+	suffix []byte
 }
 type match struct {
 	l      int
@@ -40,7 +40,7 @@ type match struct {
 	endQ   int
 }
 
-// The fields of this data structure contain parameters used to call Intersect(). The parameters include: 1) a reference; 2) path to the directory of target genomes minus the reference; 3) threshold, the minimum fraction of intersecting genomes; 4) a switch to print N at the positions of mismatches; 5) a switch to print one-based coordinates.
+// Fields of this data structure contain parameters used to call Intersect(). The parameters include: 1) a reference; 2) path to the directory of target genomes minus the reference; 3) threshold, the minimum fraction of intersecting genomes; 4) a switch to print N at the positions of mismatches; 5) a switch to print one-based coordinates.
 type Parameters struct {
 	Reference     []*fasta.Sequence
 	TargetDir     string
@@ -98,8 +98,8 @@ func (seg *seg) end() int {
 func newSeg(x, y int) seg {
 	return seg{s: x, l: y}
 }
-func (q *query) updPrefix(x int) {
-	q.prefix = q.seq[x:]
+func (q *query) updSuffix(x int) {
+	q.suffix = q.seq[x:]
 }
 func (h *Homologs) sort() *Homologs {
 	sort.Slice(h.S, func(i, j int) bool {
@@ -117,7 +117,7 @@ func argmax(x []int) int {
 	return maxIdx
 }
 
-// The function Intersect accepts a struct of Parameters and returns sequences of homologous regions, common for the reference and the query sequences.
+// The function Intersect accepts a struct of Parameters and returns sequences of homologous regions, common for subject (reference) and query sequences.
 func Intersect(parameters Parameters) []*fasta.Sequence {
 	r := parameters.Reference
 	d := parameters.TargetDir
@@ -218,7 +218,7 @@ func findHomologs(query query, subject subject) Homologs {
 	var seg seg
 	rightAnchor := false
 	for qc < query.l {
-		query.updPrefix(qc)
+		query.updSuffix(qc)
 		if lcpAnchor(&c, &p, query, subject, qc, qp) || esaAnchor(&c, query, subject) {
 			p.endQ = qp + p.l
 			p.endS = p.startS + p.l
@@ -266,6 +266,7 @@ func findHomologs(query query, subject subject) Homologs {
 	if rightAnchor || p.l/2 >= subject.a {
 		if seg.s > subject.strandL {
 			seg.s = subject.totalL + 1 - seg.s - seg.l
+
 		}
 		h.S = append(h.S, seg)
 	}
@@ -282,7 +283,7 @@ func lcpAnchor(c *match, p *match,
 		return false
 	}
 	c.startS = tryS
-	newL := lcp(query.l, query.prefix, subject.esa.T[tryS:])
+	newL := lcp(query.l, query.suffix, subject.esa.T[tryS:])
 	c.l = newL
 	return newL >= subject.a
 }
@@ -297,7 +298,7 @@ func lcp(max int, a, b []byte) int {
 	return count
 }
 func esaAnchor(c *match, query query, subject subject) bool {
-	mc := subject.esa.MatchPref(query.prefix)
+	mc := subject.esa.MatchPref(query.suffix)
 	newStartS := subject.esa.Sa[mc.I]
 	newL := mc.L
 	c.startS = newStartS
