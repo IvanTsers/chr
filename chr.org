@@ -289,8 +289,13 @@ contains:
 !1) a reference;
 !2) path to the directory of target genomes \textit{minus the reference};
 !3) threshold, the minimum fraction of intersecting genomes;
-!4) a switch to print \ty{N} at the positions of mismatches;
-!5) a switch to print one-based coordinates.
+!4) p-value of the shustring length (needed for \ty{sus.Quantile});
+!5) a switch to clean* subject's sequence;
+!6) a switch to clean* query's sequences;
+!7) a switch to print positions of segregation sites in output's headers;
+!8) a switch to print \ty{N} at the positions of mismatches;
+!8) a switch to print one-based coordinates.
+!*To clean a sequence is to remove non-ATGC nucleotides.
 
 \ty{Intersect} is defined in Section~\ref{Intersect}.
 #+end_export
@@ -299,6 +304,10 @@ contains:
 	  Reference []*fasta.Sequence
 	  TargetDir string
 	  Threshold float64
+	  ShustrPval float64
+	  CleanSubject bool
+	  CleanQuery bool
+	  PrintSegSitePos bool
 	  PrintN bool
 	  PrintOneBased bool
   }
@@ -317,16 +326,17 @@ We import \ty{fasta}.
 
 The data structure \ty{Parameters} is defined in Section~\ref{Data
   structure Parameters}. We "unpack" some fields of the
-\ty{Parameters} to make short aliases. Then we count files in the
-specified target directory. If there are none, we don't have the
-material to intersect with, thus we return the original sequence. If
-the files do exist, we prepare the subject from the reference and find
-common homologous regions.
+\ty{Parameters} to make short aliases and set default values for some
+fields. Then we count files in the specified target directory. If
+there are none, we don't have the material to intersect with, thus we
+return the original sequence. If the files do exist, we prepare the
+subject from the reference and find common homologous regions.
 #+end_export
 #+begin_src go <<Functions>>=
   func Intersect(parameters Parameters) []*fasta.Sequence {
 	  r := parameters.Reference
 	  d := parameters.TargetDir
+	  //<<Set default parameters>>
 	  numFiles := 0
 	  //<<Count files in \ty{d/}>>
 	  if numFiles == 0 {
@@ -336,6 +346,15 @@ common homologous regions.
 		  //<<Find homologous regions>>
 		  //<<Find common homologous regions>>
 	  }
+  }
+#+end_src
+#+begin_export latex
+If the \ty{ShustrPval} field has not been set by the user, we set it
+to the default \ty{0.95}.
+#+end_export
+#+begin_src go <<Set default parameters>>=
+  if parameters.ShustrPval == 0.0 {
+	  parameters.ShustrPval = 0.95
   }
 #+end_src
 #+begin_export latex
@@ -382,11 +401,17 @@ The preparation of the subject implies the following steps:
   //<<Populate \ty{subject}>>
 #+end_src
 #+begin_export latex
-We normalize the contigs using the method \ty{fasta.Clean}.
+We normalize the contigs. The complete normalization implies 1)
+converting nucleotides to uppercase, and 2) removing non-canonical
+nucleotides. We do the latter only if \ty{parameters.CleanSubject} has
+been set to \ty{true}.
 #+end_export
 #+begin_src go <<Normalize the contigs>>=
   for i, _ := range r {
-	  r[i].Clean()
+	  if parameters.CleanSubject {
+		  r[i].Clean()
+	  }
+	  r[i].DataToUpper()
   }
 #+end_src
 #+begin_export latex
@@ -432,7 +457,9 @@ the total length.
 #+end_src
 #+begin_export latex
 We calculate GC content of the subject and use it to find the length
-of a non-random shustring.
+of a non-random shustring. The latter task is delegated to
+\ty{sus.Quantile}, which we use with the shustring p-value specified
+in \ty{parameters.ShustrPval} that we also refer to as \ty{pval}.
 #+end_export
 #+begin_src go <<Calculate the minimum anchor length>>=
   atgc := 0.0
@@ -446,7 +473,8 @@ of a non-random shustring.
 	  }
   }
   gcContent := gc/atgc
-  minAncLen := sus.Quantile(cL, gcContent, 0.95)
+  pval := parameters.ShustrPval
+  minAncLen := sus.Quantile(cL, gcContent, pval)
 #+end_src
 #+begin_export latex
 We import \ty{sus}.
@@ -496,8 +524,9 @@ write. We append the output of this function to the \ty{Homologs}.
 #+begin_export latex
 We initialize and populate a \ty{query} struct (Section~\ref{Data
   structure query}). We build a path to a query file, read all
-sequences from it, concatenate and normalize them. Then we set the values
-for the \ty{seq} and \ty{l} fields.
+sequences from it, concatenate and normalize them (clean when asked,
+convert to uppercase always). Then we set the values for the \ty{seq}
+and \ty{l} fields.
 #+end_export
 #+begin_src go <<Prepare a \ty{query}>>=
   var query query
@@ -506,7 +535,10 @@ for the \ty{seq} and \ty{l} fields.
   queryData := fasta.ReadAll(f)
   f.Close()
   qSeq := fasta.Concatenate(queryData, 0)
-  qSeq.Clean()
+  if parameters.CleanQuery {
+	  qSeq.Clean()
+  }
+  qSeq.DataToUpper()
   query.seq = qSeq.Data()
   query.l = qSeq.Length()
 #+end_src
@@ -829,16 +861,15 @@ subject is covered with homologous segments found in queries.
 #+begin_export latex
 \subsubsection{Convert the pile heigths to homologous segments}
 Once we have pile heights at hand, we can convert them to actual
-segments of the reference. If the reference has been normalized, two
-adjacent homologous segments can be merged into one. The normalization
-implies 1) converting all characters to uppercase, 2) removal of
-non-conventioonal nucleotides, that is, keeping only \ty{A, T, G,
-  C}. The removal shifts proper nucleotides that followed the removed
-characters to the left. As the result, two regions separated in the
-original sequence become adjacent in the normalized sequence
-(Figure~\ref{fig:MatchEnds}, A). This creates a risk of an incorrect
-interpretation of pile heights unless match ends are not neglected
-(Figure~\ref{fig:MatchEnds}, B).
+segments of the reference. If the reference has been cleaned, two
+adjacent homologous segments can be merged into one. The cleaning
+implies removal of non-conventioonal nucleotides, that is, keeping
+only \ty{A, T, G, C}. The removal shifts proper nucleotides that
+followed the removed characters to the left. As the result, two
+regions separated in the original sequence become adjacent in the
+cleaned sequence (Figure~\ref{fig:MatchEnds}, A). This creates a risk
+of an incorrect interpretation of pile heights unless match ends are
+not neglected (Figure~\ref{fig:MatchEnds}, B).
 
 \begin{figure}[H]
     \includegraphics[width=\linewidth]{figMatchEnds.eps}
@@ -975,14 +1006,16 @@ written. The output of this function is the \ty{return} of
 #+begin_src go <<Convert homologs to sequences>>=
   printN := parameters.PrintN
   printOneBased := parameters.PrintOneBased
-  result := homologsToFasta(homologs, subject, printN, printOneBased)
+  printSegSitePos := parameters.PrintSegSitePos
+  result := homologsToFasta(homologs, subject, printN,
+	  printOneBased, printSegSitePos)
   return result
 #+end_src
 #+begin_export latex
 The function \ty{homologsToFasta()} accepts a struct of \ty{Homologs},
 a struct of \ty{subject}, and \ty{bool} switches to format the output
-sequence. The function returns a slice of pointers to fasta entries
-(type \ty{fasta.Sequence}).
+sequence and headers. The function returns a slice of pointers to
+fasta entries (type \ty{fasta.Sequence}).
 
 We initialize the output slice, then convert each segment of the input
 \ty{Homologs} into a \ty{fasta.Sequence}. For this, we construct its
@@ -990,7 +1023,8 @@ data, its header, and use them to make a sequence.
 #+end_export
 #+begin_src go <<Functions>>=
   func homologsToFasta(h Homologs, subject subject,
-	  printN bool, printOneBased bool) []*fasta.Sequence {
+	  printN bool, printOneBased bool,
+	  printSegSitePos bool) []*fasta.Sequence {
 	  var sequences []*fasta.Sequence
 	  segs := h.S
 	  ns := h.N
@@ -1031,7 +1065,10 @@ We construct sequence's header. It shall contain the orginal contig's
 header, as well as start and end coordinates on it. To find those, we
 call \ty{findSegment}, which we still have to implement. We convert
 zero-based end-inclusive coordinates to one-based end-exclusive
-coordinates if the respective switch is set to \ty{true}.
+coordinates if the respective switch is set to \ty{true}. If
+\ty{printSegSitePos} has been switched to \ty{true}, we build segsite
+positions string with a custom function, which is yet to be
+defined. Then we append the string to the header.
 #+end_export
 #+begin_src go <<Construct sequence's header>>=
   ch, cs, ce := findSegment(seg, subject)
@@ -1040,9 +1077,14 @@ coordinates if the respective switch is set to \ty{true}.
 	  ce += 1
   }
   header := fmt.Sprintf("%s (%d..%d)", ch, cs, ce)
+  if printSegSitePos {
+	  segsites := buildSegSiteStr(seg, ns, printOneBased)
+	  header += " " + segsites
+  }
 #+end_src
 #+begin_export latex
-The function \ty{findSegment} accepts a segment and a struct of
+\subsubsection{Auxillary functions for output formatting}
+\textbf{\ty{findSegment}} accepts a segment and a struct of
 \ty{subject}. It finds the subject's contig, to which the segment
 belongs, and returns its header and coordinates of the segment on the
 contig.
@@ -1071,8 +1113,8 @@ its contig is identified. We are to write the function \ty{isWithin}.
   }
 #+end_src
 #+begin_export latex
-The function \ty{isWithin} checks if an inner \ty{seg} is located
-within an outer \ty{seg}.
+\textbf{\ty{isWithin}} checks if an inner \ty{seg} is located within
+an outer \ty{seg}.
 #+end_export
 #+begin_src go <<Functions>>=
   func isWithin(in seg, out seg) bool {
@@ -1080,43 +1122,48 @@ within an outer \ty{seg}.
   }
 #+end_src
 #+begin_export latex
-\subsection{Function \ty{PrintSegsiteRanges}}
-!\ty{PrintSegsiteRanges} accepts a struct of \ty{Homologs}, a pointer
-!to an output file, and a switch for printing one-based
-!coordinates. It prints segregation site coordinate ranges.
-
-Segregation sites make sense only in the context of homologous
-regions, so we print only sites found within a homologous segment.
+\textbf{\ty{buildSegSiteStr}} accepts a segment, a map of
+segregation sites (\ty{Homologs.N}), and a switch for printing
+one-based coordinates. It builds a string of segregation site
+coordinate ranges. Imagine a homologous region that has substitutions
+at positions 2, 4, 6, 7, 8, 10 (6 in total). The \ty{segSiteStr}
+of this sequence has the following format:
+\begin{verbatim}
+6; 2 4 [6:8] 10
+\end{verbatim}
+ We calculate the number of segregation sites and begin to build our
+ \ty{segSiteStr}. Segregation sites make sense only in the
+ context of homologous regions, so we add only sites found within a
+ the specificed segment.
 #+end_export
 #+begin_src go <<Functions>>=
-  func PrintSegsiteRanges(h Homologs, file *os.File, printOneBased bool) {
-	  segs := h.S
-	  ns := h.N
+  func buildSegSiteStr(seg seg, ns map[int]bool,
+	  printOneBased bool) string {
+	  var segSiteStr string
 	  if len(ns) == 0 {
-		  fmt.Fprintf(file, "No segregation sites found\n")
+		  segSiteStr = "0;"
 	  } else {
-		  for _, seg := range segs {
-			  //<<Print segsites found within a homolog>>
-		  }
+		  segSiteStr += fmt.Sprintf("%d; ", len(ns))
+		  //<<Add segsites found within the \ty{seg}>>
 	  }
+	  return segSiteStr
   }
 #+end_src
 #+begin_export latex
 We extract the relevant positions and store them in the slice
 \ty{k}. Then we scan the slice for ranges.
 #+end_export
-#+begin_src go <<Print segsites found within a homolog>>=
+#+begin_src go <<Add segsites found within the \ty{seg}>>=
   k := []int{-1}
   //<<Extract relevant positions>>
   for i := 1; i < len(k) - 1; i++ {
 	  //<<Scan for segsite ranges>>
   }
-  fmt.Fprintf(file, "\n")
 #+end_src
 #+begin_export latex
-We traverse \ty{ns} from the start to the end of the current homology,
-find existing keys, convert them to 1-based coordinates \textit{on the
-  given homology}, and save the coordinate in a slice. We flank the
+We traverse \ty{ns} from the start to the end of the segment, find
+existing keys, convert them to 1-based coordinates \textit{on the
+  given segment}, and save the coordinate in a slice. We flank the
 slice of those keys with \ty{-1}.
 #+end_export
 #+begin_src go <<Extract relevant positions>>=
@@ -1145,11 +1192,11 @@ system we use.
   }
   //<<One- or zero-based coord?>>
   if next {
-	  fmt.Fprintf(file, "[%d", coord)
+	  segSiteStr += fmt.Sprintf("[%d", coord)
   } else if prev {
-	  fmt.Fprintf(file, ":%d] ", coord)
+	  segSiteStr += fmt.Sprintf(":%d] ", coord)
   } else {
-	  fmt.Fprintf(file, "%d ", coord)
+	  segSiteStr += fmt.Sprintf("%d ", coord)
   }
 #+end_src
 #+begin_export latex

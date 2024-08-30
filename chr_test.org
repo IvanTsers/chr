@@ -453,17 +453,23 @@ produced by \ty{phylonium} on the same input.
 	  query := prepareQuery("data/q/" + tc.input)
 	  h := findHomologs(query, subject)
 	  h.reduceOverlaps()
-	  get := homologsToFasta(h, subject, false, true)
-	  PrintSegsiteRanges(h, os.Stdout, false)
-	  for i := range get {
-		  if !reflect.DeepEqual(get[i].Data(),
+	  get := homologsToFasta(h, subject, false, true, true)
+	  for i, g := range get {
+		  fmt.Fprintln(os.Stderr, g.Header())
+		  if !reflect.DeepEqual(g.Data(),
 			  tc.want[i].Data()) {
 			  t.Errorf("\nwant:\n%v\nget:\n%v\n",
 				  string(tc.want[i].Data()),
-				  string(get[i].Data()))
+				  string(g.Data()))
 		  }
 	  }
   })
+#+end_src
+#+begin_export latex
+we import \ty{fmt}.
+#+end_export
+#+begin_src go <<Testing imports>>=
+  "fmt"
 #+end_src
 #+begin_export latex
 We have just also tested the function \ty{homologsToFasta} and the
@@ -633,6 +639,8 @@ threshold.
 		  Reference: r,
 		  TargetDir: "data/i/" + tc.name + "/t",
 		  Threshold: 1.0,
+		  CleanSubject: true,
+		  CleanQuery: true,
 		  PrintN: false,
 		  PrintOneBased: true,
 	  }
@@ -648,10 +656,11 @@ We compare lengths of the slices. Then we test if each element of
   //<<Compare lengths of want and get>>
   for i := 0; i < minLen; i++ {
 	  if !containsData(get, want[i]) {
-		  t.Errorf("\n'%v' is absent from results:\n%v\n",
+		  t.Errorf("\nwant:'%v' is absent from results:\n%v\n",
 			  want[i].Header(), string(want[i].Data()))
-	  }
-  }
+		  t.Errorf("\nget: '%v'\n%v\n",
+			  get[i].Header(), string(get[i].Data()))
+	  }}
 #+end_src
 #+begin_export latex
 We compare the number of elements in the slices, as well as the total

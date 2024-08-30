@@ -1,6 +1,7 @@
 package chr
 
 import (
+	"fmt"
 	"github.com/evolbioinf/esa"
 	"github.com/evolbioinf/sus"
 	"github.com/ivantsers/fasta"
@@ -201,14 +202,14 @@ func TestFindHomologs(t *testing.T) {
 			query := prepareQuery("data/q/" + tc.input)
 			h := findHomologs(query, subject)
 			h.reduceOverlaps()
-			get := homologsToFasta(h, subject, false, true)
-			PrintSegsiteRanges(h, os.Stdout, false)
-			for i := range get {
-				if !reflect.DeepEqual(get[i].Data(),
+			get := homologsToFasta(h, subject, false, true, true)
+			for i, g := range get {
+				fmt.Fprintln(os.Stderr, g.Header())
+				if !reflect.DeepEqual(g.Data(),
 					tc.want[i].Data()) {
 					t.Errorf("\nwant:\n%v\nget:\n%v\n",
 						string(tc.want[i].Data()),
-						string(get[i].Data()))
+						string(g.Data()))
 				}
 			}
 		})
@@ -290,6 +291,8 @@ func TestIntersect(t *testing.T) {
 				Reference:     r,
 				TargetDir:     "data/i/" + tc.name + "/t",
 				Threshold:     1.0,
+				CleanSubject:  true,
+				CleanQuery:    true,
 				PrintN:        false,
 				PrintOneBased: true,
 			}
@@ -313,8 +316,10 @@ func TestIntersect(t *testing.T) {
 			}
 			for i := 0; i < minLen; i++ {
 				if !containsData(get, want[i]) {
-					t.Errorf("\n'%v' is absent from results:\n%v\n",
+					t.Errorf("\nwant:'%v' is absent from results:\n%v\n",
 						want[i].Header(), string(want[i].Data()))
+					t.Errorf("\nget: '%v'\n%v\n",
+						get[i].Header(), string(get[i].Data()))
 				}
 			}
 		})

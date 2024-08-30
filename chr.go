@@ -40,13 +40,17 @@ type match struct {
 	endQ   int
 }
 
-// Fields of this data structure contain parameters used to call Intersect(). The parameters include: 1) a reference; 2) path to the directory of target genomes minus the reference; 3) threshold, the minimum fraction of intersecting genomes; 4) a switch to print N at the positions of mismatches; 5) a switch to print one-based coordinates.
+// Fields of this data structure contain parameters used to call Intersect(). The parameters include: 1) a reference; 2) path to the directory of target genomes minus the reference; 3) threshold, the minimum fraction of intersecting genomes; 4) p-value of the shustring length (needed for sus.Quantile); 5) a switch to clean* subject's sequence; 6) a switch to clean* query's sequences; 7) a switch to print positions of segregation sites in output's headers; 8) a switch to print N at the positions of mismatches; 8) a switch to print one-based coordinates. *To clean a sequence is to remove non-ATGC nucleotides.
 type Parameters struct {
-	Reference     []*fasta.Sequence
-	TargetDir     string
-	Threshold     float64
-	PrintN        bool
-	PrintOneBased bool
+	Reference       []*fasta.Sequence
+	TargetDir       string
+	Threshold       float64
+	ShustrPval      float64
+	CleanSubject    bool
+	CleanQuery      bool
+	PrintSegSitePos bool
+	PrintN          bool
+	PrintOneBased   bool
 }
 
 func (h *Homologs) reduceOverlaps() {
@@ -121,6 +125,9 @@ func argmax(x []int) int {
 func Intersect(parameters Parameters) []*fasta.Sequence {
 	r := parameters.Reference
 	d := parameters.TargetDir
+	if parameters.ShustrPval == 0.0 {
+		parameters.ShustrPval = 0.95
+	}
 	numFiles := 0
 	dirEntries, err := os.ReadDir(d)
 	if err != nil {
@@ -134,7 +141,10 @@ func Intersect(parameters Parameters) []*fasta.Sequence {
 	} else {
 		var subject subject
 		for i, _ := range r {
-			r[i].Clean()
+			if parameters.CleanSubject {
+				r[i].Clean()
+			}
+			r[i].DataToUpper()
 		}
 		subjectHeader := r[0].Header()
 		subjectData := r[0].Data()
@@ -167,7 +177,8 @@ func Intersect(parameters Parameters) []*fasta.Sequence {
 			}
 		}
 		gcContent := gc / atgc
-		minAncLen := sus.Quantile(cL, gcContent, 0.95)
+		pval := parameters.ShustrPval
+		minAncLen := sus.Quantile(cL, gcContent, pval)
 		rev := fasta.NewSequence("reverse", subjectData)
 		rev.ReverseComplement()
 		subjectData = append(subjectData, rev.Data()...)
@@ -186,7 +197,10 @@ func Intersect(parameters Parameters) []*fasta.Sequence {
 			queryData := fasta.ReadAll(f)
 			f.Close()
 			qSeq := fasta.Concatenate(queryData, 0)
-			qSeq.Clean()
+			if parameters.CleanQuery {
+				qSeq.Clean()
+			}
+			qSeq.DataToUpper()
 			query.seq = qSeq.Data()
 			query.l = qSeq.Length()
 			h := findHomologs(query, subject)
@@ -207,7 +221,9 @@ func Intersect(parameters Parameters) []*fasta.Sequence {
 		homologs.S = intersection
 		printN := parameters.PrintN
 		printOneBased := parameters.PrintOneBased
-		result := homologsToFasta(homologs, subject, printN, printOneBased)
+		printSegSitePos := parameters.PrintSegSitePos
+		result := homologsToFasta(homologs, subject, printN,
+			printOneBased, printSegSitePos)
 		return result
 	}
 }
@@ -362,7 +378,8 @@ func pileToSeg(p []int, t int, isAdj map[int]bool) []seg {
 	return segs
 }
 func homologsToFasta(h Homologs, subject subject,
-	printN bool, printOneBased bool) []*fasta.Sequence {
+	printN bool, printOneBased bool,
+	printSegSitePos bool) []*fasta.Sequence {
 	var sequences []*fasta.Sequence
 	segs := h.S
 	ns := h.N
@@ -383,6 +400,10 @@ func homologsToFasta(h Homologs, subject subject,
 			ce += 1
 		}
 		header := fmt.Sprintf("%s (%d..%d)", ch, cs, ce)
+		if printSegSitePos {
+			segsites := buildSegSiteStr(seg, ns, printOneBased)
+			header += " " + segsites
+		}
 		seq := fasta.NewSequence(header, data)
 		sequences = append(sequences, seq)
 	}
@@ -406,41 +427,38 @@ func findSegment(seg seg, subject subject) (string, int, int) {
 func isWithin(in seg, out seg) bool {
 	return in.s >= out.s && in.end() <= out.end()
 }
-
-// PrintSegsiteRanges accepts a struct of Homologs, a pointer to an output file, and a switch for printing one-based coordinates. It prints segregation site coordinate ranges.
-func PrintSegsiteRanges(h Homologs, file *os.File, printOneBased bool) {
-	segs := h.S
-	ns := h.N
+func buildSegSiteStr(seg seg, ns map[int]bool,
+	printOneBased bool) string {
+	var segSiteStr string
 	if len(ns) == 0 {
-		fmt.Fprintf(file, "No segregation sites found\n")
+		segSiteStr = "0;"
 	} else {
-		for _, seg := range segs {
-			k := []int{-1}
-			for i := seg.s; i < seg.end(); i++ {
-				if ns[i] {
-					k = append(k, i-seg.s+1)
-				}
+		segSiteStr += fmt.Sprintf("%d; ", len(ns))
+		k := []int{-1}
+		for i := seg.s; i < seg.end(); i++ {
+			if ns[i] {
+				k = append(k, i-seg.s+1)
 			}
-			k = append(k, -1)
-			for i := 1; i < len(k)-1; i++ {
-				prev := k[i] == k[i-1]+1
-				next := k[i] == k[i+1]-1
-				if prev && next {
-					continue
-				}
-				coord := k[i]
-				if printOneBased {
-					coord = k[i] + 1
-				}
-				if next {
-					fmt.Fprintf(file, "[%d", coord)
-				} else if prev {
-					fmt.Fprintf(file, ":%d] ", coord)
-				} else {
-					fmt.Fprintf(file, "%d ", coord)
-				}
+		}
+		k = append(k, -1)
+		for i := 1; i < len(k)-1; i++ {
+			prev := k[i] == k[i-1]+1
+			next := k[i] == k[i+1]-1
+			if prev && next {
+				continue
 			}
-			fmt.Fprintf(file, "\n")
+			coord := k[i]
+			if printOneBased {
+				coord = k[i] + 1
+			}
+			if next {
+				segSiteStr += fmt.Sprintf("[%d", coord)
+			} else if prev {
+				segSiteStr += fmt.Sprintf(":%d] ", coord)
+			} else {
+				segSiteStr += fmt.Sprintf("%d ", coord)
+			}
 		}
 	}
+	return segSiteStr
 }
