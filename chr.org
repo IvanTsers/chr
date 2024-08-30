@@ -1091,7 +1091,7 @@ contig.
 
 We initialize the output variables and 'unpack' some fields of the
 \ty{subject}. Then we check if our segment is within some of the
-contigs. If so, we get its header, adjust the segment's start and end
+contigs. If so, we get its header, get the segment's start and end
 coordinates. A segment can be found only once, so we break as soon as
 its contig is identified. We are to write the function \ty{isWithin}.
 #+end_export
@@ -1104,7 +1104,7 @@ its contig is identified. We are to write the function \ty{isWithin}.
 	  for i, contigSeg := range contigSegments {
 		  if isWithin(seg, contigSeg) {
 			  ch = contigHeaders[i]
-			  cs = seg.s - contigSeg.s + 1
+			  cs = seg.s - contigSeg.s
 			  ce = cs + seg.l
 			  break
 		  }
@@ -1162,14 +1162,13 @@ We extract the relevant positions and store them in the slice
 #+end_src
 #+begin_export latex
 We traverse \ty{ns} from the start to the end of the segment, find
-existing keys, convert them to 1-based coordinates \textit{on the
-  given segment}, and save the coordinate in a slice. We flank the
-slice of those keys with \ty{-1}.
+existing keys, and save the coordinate in a slice. We flank the slice
+of those keys with \ty{-1}.
 #+end_export
 #+begin_src go <<Extract relevant positions>>=
   for i := seg.s; i < seg.end(); i++ {
 	  if ns[i] {
-		  k = append(k, i - seg.s + 1)
+		  k = append(k, i - seg.s)
 	  }
   }
   k = append(k, -1)

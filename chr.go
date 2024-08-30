@@ -417,7 +417,7 @@ func findSegment(seg seg, subject subject) (string, int, int) {
 	for i, contigSeg := range contigSegments {
 		if isWithin(seg, contigSeg) {
 			ch = contigHeaders[i]
-			cs = seg.s - contigSeg.s + 1
+			cs = seg.s - contigSeg.s
 			ce = cs + seg.l
 			break
 		}
@@ -437,7 +437,7 @@ func buildSegSiteStr(seg seg, ns map[int]bool,
 		k := []int{-1}
 		for i := seg.s; i < seg.end(); i++ {
 			if ns[i] {
-				k = append(k, i-seg.s+1)
+				k = append(k, i-seg.s)
 			}
 		}
 		k = append(k, -1)
