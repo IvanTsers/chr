@@ -1,4 +1,4 @@
-# [`chr`](hhttps://owncloud.gwdg.de/index.php/s/rUiY9yfvhxMp0ja): common homologous regions
+# [`chr`](https://owncloud.gwdg.de/index.php/s/rUiY9yfvhxMp0ja): common homologous regions
 This package contains functions for fast search of homologous regions shared by multiple closely related genomes. The interface of `chr` consists of the `Intersect` function and the `Parameters` struct:
 ```go
 chr.Intersect(chr.Parameters)
