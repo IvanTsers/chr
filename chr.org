@@ -825,7 +825,7 @@ the reference.
 We round the product down to the nearest integer, but if the
 latter happens to be zero, we set the value to 1. Thus, we will be
 always trying to find the partial intersection for any $0 \le f < 1$
-and $g /ge 1 $.
+and $g \ge 1 $.
 #+end_export
 #+begin_src go <<Interpret the threshold fraction>>=
   f := parameters.Threshold

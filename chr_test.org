@@ -596,7 +596,7 @@ we import \ty{math}.
   "math"
 #+end_src
 #+begin_export latex
-\subsection{Intersect}
+\subsection{\ty{Intersect}}
 We emulate a real case workflow using the \ty{chr} package
 functions. There are input genomes we want to intersect. 
 
