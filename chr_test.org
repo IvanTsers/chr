@@ -316,18 +316,18 @@ populate the struct.
   func prepareSubject(path string) subject {
 	  var subject subject
 	  r := readFasta(path)
-	  //<<Normalize the contigs>>
-	  //<<Process the contigs>>
-	  //<<Calculate the minimum anchor length>>
-	  //<<Build subject's ESA>>
-	  //<<Populate \ty{subject}>>
+	  //<<Normalize test contigs>>
+	  //<<Process test contigs>>
+	  //<<Calculate test minimum anchor length>>
+	  //<<Build test subject's ESA>>
+	  //<<Populate test \ty{subject}>>
 	  return subject
   }
 #+end_src
 #+begin_export latex
 We normalize the contigs using the method \ty{fasta.Clean}.
 #+end_export
-#+begin_src go <<Normalize the contigs>>=
+#+begin_src go <<Normalize test contigs>>=
   for i, _ := range r {
 	  r[i].Clean()
   }
@@ -338,14 +338,14 @@ We extract the first subject sequence's \ty{Header} and
 subject's contigs. Most likely, there will be more than one contig, so
 we concatenate them.
 #+end_export
-#+begin_src go <<Process the contigs>>=
+#+begin_src go <<Process test contigs>>=
   subjectHeader := r[0].Header()
   subjectData := r[0].Data()
   contigHeaders := []string{subjectHeader}
   contigSegs := []seg{newSeg(0, len(subjectData))}
   cL := len(subjectData)
   if len(r) > 1 {
-	  //<<Concatenate subject's contigs>>
+	  //<<Concatenate test subject's contigs>>
   }
 #+end_src
 #+begin_export latex
@@ -358,7 +358,7 @@ a \ty{seg} and append it to the slice of contig segments. Finally, we
 append the contig's data to the combined subject's data and increase
 the total length.
 #+end_export
-#+begin_src go <<Concatenate subject's contigs>>=
+#+begin_src go <<Concatenate test subject's contigs>>=
   for i := 1; i < len(r); i++ {
 	  seq := r[i]
 	  seqH := seq.Header()
@@ -377,7 +377,7 @@ the total length.
 We calculate GC content in the subject and use it to find the
 length of a non-random shustring.
 #+end_export
-#+begin_src go <<Calculate the minimum anchor length>>=
+#+begin_src go <<Calculate test minimum anchor length>>=
   atgc := 0.0
   gc := 0.0
   for _, c := range subjectData {
@@ -401,7 +401,7 @@ We import \ty{sus}.
 We calculate the reverse strand, append it to the subject, and build
 an ESA.
 #+end_export
-#+begin_src go <<Build subject's ESA>>=
+#+begin_src go <<Build test subject's ESA>>=
   rev := fasta.NewSequence("reverse", subjectData)
   rev.ReverseComplement()
   subjectData = append(subjectData, rev.Data()...)
@@ -416,7 +416,7 @@ We import \ty{esa}.
 #+begin_export latex
 We populate the \ty{subject} object with the calculated values.
 #+end_export
-#+begin_src go <<Populate \ty{subject}>>=
+#+begin_src go <<Populate test \ty{subject}>>=
   subject.esa = sa
   subject.totalL = len(subjectData)
   subject.strandL = len(subjectData)/2
