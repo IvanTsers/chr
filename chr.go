@@ -196,7 +196,7 @@ func Intersect(parameters Parameters) []*fasta.Sequence {
 			f, _ := os.Open(filePath)
 			queryData := fasta.ReadAll(f)
 			f.Close()
-			qSeq := fasta.Concatenate(queryData, 0)
+			qSeq := fasta.Concatenate(queryData, '!')
 			if parameters.CleanQuery {
 				qSeq.Clean()
 			}
