@@ -822,10 +822,10 @@ subject. This number corresponds to the number of files in
 \ty{Parameters.TargetDir} given that the directory does not contain
 the reference.
 
-We round the product down to the nearest integer, but if the
-latter happens to be zero, we set the value to 1. Thus, we will be
-always trying to find the partial intersection for any $0 \le f < 1$
-and $g \ge 1 $.
+We round the product down to the nearest integer, but if the latter
+happens to be zero, we set the value to 1. Thus, we will be always
+trying to find the partial intersection for any $0 < f \le 1$ and $g
+\ge 1$.
 #+end_export
 #+begin_src go <<Interpret the threshold fraction>>=
   f := parameters.Threshold
@@ -1129,7 +1129,7 @@ coordinate ranges. Imagine a homologous region that has substitutions
 at positions 2, 4, 6, 7, 8, 10 (6 in total). The \ty{segSiteStr}
 of this sequence has the following format:
 \begin{verbatim}
-6; 2 4 [6:8] 10
+6 2 4 [6:8] 10
 \end{verbatim}
  We calculate the number of segregation sites and begin to build our
  \ty{segSiteStr}. Segregation sites make sense only in the
@@ -1141,9 +1141,9 @@ of this sequence has the following format:
 	  printOneBased bool) string {
 	  var segSiteStr string
 	  if len(ns) == 0 {
-		  segSiteStr = "0;"
+		  segSiteStr = "0"
 	  } else {
-		  segSiteStr += fmt.Sprintf("%d; ", len(ns))
+		  segSiteStr += fmt.Sprintf("%d ", len(ns))
 		  //<<Add segsites found within the \ty{seg}>>
 	  }
 	  return segSiteStr

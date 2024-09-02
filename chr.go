@@ -431,9 +431,9 @@ func buildSegSiteStr(seg seg, ns map[int]bool,
 	printOneBased bool) string {
 	var segSiteStr string
 	if len(ns) == 0 {
-		segSiteStr = "0;"
+		segSiteStr = "0"
 	} else {
-		segSiteStr += fmt.Sprintf("%d; ", len(ns))
+		segSiteStr += fmt.Sprintf("%d ", len(ns))
 		k := []int{-1}
 		for i := seg.s; i < seg.end(); i++ {
 			if ns[i] {
