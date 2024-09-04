@@ -28,14 +28,13 @@ values. Thereafter, we test edge cases.
 #+end_src
 #+begin_export latex
 We generate two arrays of pseudorandom integers and use them to
-initialize a dozen of new segments. We re-seed the generator every
-time.
+initialize a dozen new segments.
 #+end_export
 #+begin_src go <<Generate pseudorandom segments>>=
   var starts []int
   var segments []seg
+  rand.Seed(time.Now().UnixNano())
   for i := 0; i < 12; i++ {
-	  rand.Seed(time.Now().UnixNano())
 	  rs := rand.Intn(1000000000)
 	  rl := 1 + rand.Intn(999999999)
 	  starts = append(starts, rs)
@@ -51,7 +50,7 @@ We import \ty{rand} and \ty{time}.
 #+end_src
 #+begin_export latex
 We sort the segments using \ty{sort} and the starts using the
-\ty{sort.Ints} function from the default \ty{Go} package. Then we
+\ty{sort.Ints} function from the standard \ty{Go} library. Then we
 compare the first, the median, and the last element.
 #+end_export
 #+begin_src go <<Sort the segments and compare values>>=
@@ -77,11 +76,12 @@ Edge case slices of segments include:
 \begin{itemize}
   \itemsep0em
 \item an empty slice;
-\item a slice of single element;
+\item a slice of a single element;
 \item a slice of identical elements;
 \item an already sorted slice.
 \end{itemize}
-To test these, we declare a struct of test cases and iterate over it.
+To test for these, we declare a struct of test cases and iterate over
+it.
 #+end_export
 #+begin_src go <<Edge case segments>>=
   x := newSeg(12, 221)
@@ -187,7 +187,8 @@ We run the tests and compare the actual output to the expected values.
 	  h.reduceOverlaps()
 	  get := h.S
 	  if !reflect.DeepEqual(get, tc.want) {
-		  t.Errorf("\nwant:\n%v\nget:\n%v\n", tc.want, get)
+		  t.Errorf("\nwant:\n%v\nget:\n%v\n",
+			  tc.want, get)
 	  }
   })
 #+end_src
@@ -220,7 +221,7 @@ We import \ty{fasta}.
   "github.com/ivantsers/fasta"
 #+end_src
 #+begin_export latex
-We test \ty{findHomologs} on input sequences covering various cases
+We test \ty{findHomologs} on input sequences covering ten cases
 (Table~\ref{tab:testCasesFH})
 
 \begin{table}[H]
@@ -308,9 +309,9 @@ We define the test cases.
 #+end_src
 #+begin_export latex
 The function \ty{prepareSubject} returns a struct of \ty{subject}. We
-initialize the struct, read the contigs, normalize subject's contigs,
-process them, calculate the minimum anchor length, build an ESA, and
-populate the struct.
+initialize the struct, read the contigs, normalize the subject's
+contigs, process them, calculate the minimum anchor length, build an
+ESA, and populate the struct.
 #+end_export
 #+begin_src go <<Auxillary functions>>=
   func prepareSubject(path string) subject {
@@ -333,8 +334,8 @@ We normalize the contigs using the method \ty{fasta.Clean}.
   }
 #+end_src
 #+begin_export latex
-We extract the first subject sequence's \ty{Header} and
-\ty{Data}. Then we use them to initialize the fields describing the
+We extract the \ty{Header} and \ty{Data} of the first subject
+sequence. Then we use them to initialize the fields describing the
 subject's contigs. Most likely, there will be more than one contig, so
 we concatenate them.
 #+end_export
@@ -374,7 +375,7 @@ the total length.
   }
 #+end_src
 #+begin_export latex
-We calculate GC content in the subject and use it to find the
+We calculate the GC content in the subject and use it to find the
 length of a non-random shustring.
 #+end_export
 #+begin_src go <<Calculate test minimum anchor length>>=
@@ -427,7 +428,7 @@ We populate the \ty{subject} object with the calculated values.
 #+begin_export latex
 The function \ty{prepareQuery} returns a struct of \ty{query}. We
 initialize and populate a \ty{query} struct. We read all sequences
-from it, concatenate and clean them. Then we set the values for the
+from it, and concatenate and clean them. Then we set the values of the
 \ty{seq} and \ty{l} fields.
 #+end_export
 #+begin_src go <<Auxillary functions>>=
@@ -443,7 +444,7 @@ from it, concatenate and clean them. Then we set the values for the
 #+end_src
 #+begin_export latex
 For each test case we prepare the subject and the query, find
-homologs, sort them and reduce overlaps. Then we convert \ty{Seg}
+homologs, sort them, and reduce overlaps. Then we convert \ty{seg}
 slices into actual \ty{fasta} sequences and compare them to those
 produced by \ty{phylonium} on the same input.
 #+end_export
@@ -479,22 +480,21 @@ integration between \ty{findHomologs}, \ty{sort}, and
 #+begin_export latex
 \subsection{\ty{pileToSeg and pileHeigths}}
 We test the two functions on an imaginary ten-nucleotide-long subject,
-for which a number of homologies was found in five query sequences
+for which a number of homologs are found in five query sequences
 (Figure~\ref{fig:testCasesPile}).
 \begin{figure}[H]
     \centering
-    \includegraphics[width=\linewidth]{figTestCasesPile.eps}
+    \includegraphics[width=0.65\linewidth]{figTestCasesPile.eps}
     \caption{Test input and intermediate results of the \ty{Intersect}
       function. A, homologous segments found in 5 query sequences,
-      curly brackets hold the structure of the corresponding \ty{seg}
-      objects, $\{start, length\}$. B, Subject coverage with
-      homologous segments ('pile heights'). Blue horizontal dashed
-      line indicates an example threshold fraction of 80\% of
-      queries. With this threshold, positions with the pile heigth of
-      at least 4 are to be included in the intersection. Red vertical
-      lines indicate the positions of adjacent segments, at which the
-      intersection is forced to be broken into two segments to avoid
-      chimeric sequences.}
+      curly brackets hold the start and the length of the
+      corresponding segments. B, Subject coverage with homologous
+      segments ('pile heights'). The dashed line indicates an example
+      threshold fraction of 80\%. With this threshold, positions with
+      a pile heigth of at least 4 are to be included in the
+      intersection. Solid vertical lines indicate the positions of
+      adjacent segments, at which the intersection is forced to be
+      split into two segments to avoid chimeric sequences.}
     \label{fig:testCasesPile}
 \end{figure}
 We initialize test \ty{Homologs}. Then we test \ty{pileHeights},
@@ -536,9 +536,9 @@ actual output to the expected.
   })
 #+end_src
 #+begin_export latex
-We define the test cases for \ty{pileToSeg}. These include fair
-sensitivity thresholds from 20\% to 80\%, as well as some edge
-cases. The test cases corresspond to Figure~\ref{fig:testCasesPile}.
+We define the test cases for \ty{pileToSeg} using the example shown in
+Figure~\ref{fig:testCasesPile}. These segments are to be tested with
+sensitivity thresholds from 0\% to 100\%.
 #+end_export
 #+begin_src go <<Test cases for pileToSeg>>=
   zero := []seg{newSeg(0, 3), newSeg(3, 5), newSeg(8, 1)}
@@ -597,12 +597,13 @@ we import \ty{math}.
 #+end_src
 #+begin_export latex
 \subsection{\ty{Intersect}}
-We emulate a real case workflow using the \ty{chr} package
-functions. There are input genomes we want to intersect. 
+We emulate a real case workflow using the exported function
+\ty{Intersect} applied to a set of simulated sequences and a set of
+real genones.
 
-There are two test cases: 1) ten 10kb-long target sequences generated
-by \ty{stan} (\url{github.com/evolbioinf/stan}), 2) five random
-sequences of SARS-CoV-2 obtained from the NCBI.
+There are two test cases: 1) ten 10kb target sequences generated by
+\ty{stan} (\url{github.com/evolbioinf/stan}), 2) five random sequences
+of SARS-CoV-2 obtained from the NCBI.
 #+end_export
 #+begin_src go <<Testing functions>>=
   func TestIntersect(t *testing.T) {
@@ -624,12 +625,11 @@ sequences of SARS-CoV-2 obtained from the NCBI.
   }
 #+end_src
 #+begin_export latex
-We read the reference. Note: we always use the file \ty{t1.fasta} as
-the reference. We set \ty{Parameters} and call \ty{Intersect} with
-those \ty{Parameters}. We compare the results to the output of
-\ty{phylonium -p}. As \ty{phylonium} can only return complete
-intersections, we will use \ty{Intersect} with the 100\% sensitivity
-threshold.
+We read the reference, always \ty{t1.fasta}. We set \ty{Parameters}
+and call \ty{Intersect} with those \ty{Parameters}. We compare the
+results to the output of \ty{phylonium -p}. As \ty{phylonium} can only
+return complete intersections, we use \ty{Intersect} with the 100\%
+sensitivity threshold.
 #+end_export
 #+begin_src go <<Run TestIntersect test cases>>=
   t.Run(tc.name, func(t *testing.T) {
@@ -649,22 +649,28 @@ threshold.
   })
 #+end_src 
 #+begin_export latex
-We compare lengths of the slices. Then we test if each element of
-\ty{want} is contained in \ty{get}.
+We compare the clengths of the slices. Then we test whether each
+element of \ty{want} is contained in \ty{get}.
 #+end_export
 #+begin_src go <<Compare want and get>>=
   //<<Compare lengths of want and get>>
   for i := 0; i < minLen; i++ {
 	  if !containsData(get, want[i]) {
-		  t.Errorf("\nwant:'%v' is absent from results:\n%v\n",
-			  want[i].Header(), string(want[i].Data()))
+
+		  t.Errorf("\nwant:'%v' is absent " +
+			  "from results:\n%v\n",
+			  want[i].Header(),
+			  string(want[i].Data()))
+		
 		  t.Errorf("\nget: '%v'\n%v\n",
-			  get[i].Header(), string(get[i].Data()))
+			  get[i].Header(),
+			  string(get[i].Data()))
 	  }}
 #+end_src
 #+begin_export latex
 We compare the number of elements in the slices, as well as the total
-lengths of bytes they contain. We also determine the shortest slice.
+number of bytes they contain. We also determine the length of the
+shortest slice.
 #+end_export
 #+begin_src go <<Compare lengths of want and get>>=
   wL := len(want)
@@ -681,8 +687,10 @@ lengths of bytes they contain. We also determine the shortest slice.
   wConcat := fasta.Concatenate(want, 0)
   gConcat := fasta.Concatenate(get, 0)
   if len(wConcat.Data()) != len(gConcat.Data()) {
-	  t.Errorf("\nthe result has %d nucleotides, expected %d",
-		  len(gConcat.Data()), len(wConcat.Data()))
+	  t.Errorf("\nthe result has %d nucleotides, " +
+		  "expected %d",
+		  len(gConcat.Data()),
+		  len(wConcat.Data()))
   }
 #+end_src
 #+begin_export latex

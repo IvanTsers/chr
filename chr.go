@@ -10,7 +10,7 @@ import (
 	"sort"
 )
 
-// Data structure Homologs describes homologous regions of a subject found in queries. This data type contains a slice of segments of the subject S and a map of segregation sites N.
+// Data structure Homologs describes homologous regions of a subject found in queries. This data type contains a slice of segments of the subject S and a map of segregating sites N.
 type Homologs struct {
 	S []seg
 	N map[int]bool
@@ -40,7 +40,7 @@ type match struct {
 	endQ   int
 }
 
-// Fields of this data structure contain parameters used to call Intersect(). The parameters include: 1) a reference; 2) path to the directory of target genomes minus the reference; 3) threshold, the minimum fraction of intersecting genomes; 4) p-value of the shustring length (needed for sus.Quantile); 5) a switch to clean* subject's sequence; 6) a switch to clean* query's sequences; 7) a switch to print positions of segregation sites in output's headers; 8) a switch to print N at the positions of mismatches; 8) a switch to print one-based coordinates. *To clean a sequence is to remove non-ATGC nucleotides.
+// Fields of this data structure contain parameters used to call Intersect(). The parameters include:  1) a reference; 2) path to the directory of target genomes minus the reference; 3) threshold, the minimum fraction of intersecting genomes; 4) p-value of the shustring length (needed for sus.Quantile); 5) a switch to clean* subject sequence; 6) a switch to clean* query sequences; 7) a switch to print positions of segregating sites in output headers; 8) a switch to print N at the positions of mismatches; 8) a switch to print one-based coordinates. *To clean a sequence is to remove non-ATGC nucleotides.
 type Parameters struct {
 	Reference       []*fasta.Sequence
 	TargetDir       string
@@ -121,7 +121,7 @@ func argmax(x []int) int {
 	return maxIdx
 }
 
-// The function Intersect accepts a struct of Parameters and returns sequences of homologous regions, common for subject (reference) and query sequences.
+// The function Intersect accepts a struct of Parameters and returns sequences of homologous regions, common to subject (reference) and query sequences.
 func Intersect(parameters Parameters) []*fasta.Sequence {
 	r := parameters.Reference
 	d := parameters.TargetDir
@@ -216,7 +216,10 @@ func Intersect(parameters Parameters) []*fasta.Sequence {
 			t = 1
 		}
 		p := pileHeights(homologs, subject.strandL)
-		isAdj := makeMapAdj(homologs)
+		isAdj := make(map[int]bool)
+		if parameters.CleanQuery {
+			isAdj = makeMapAdj(homologs)
+		}
 		intersection := pileToSeg(p, t, isAdj)
 		homologs.S = intersection
 		printN := parameters.PrintN
@@ -399,7 +402,7 @@ func homologsToFasta(h Homologs, subject subject,
 			cs += 1
 			ce += 1
 		}
-		header := fmt.Sprintf("%s (%d..%d)", ch, cs, ce)
+		header := fmt.Sprintf("%s\t(%d..%d)", ch, cs, ce)
 		if printSegSitePos {
 			segsites := buildSegSiteStr(seg, ns, printOneBased)
 			header += " " + segsites
@@ -433,31 +436,19 @@ func buildSegSiteStr(seg seg, ns map[int]bool,
 	if len(ns) == 0 {
 		segSiteStr = "0"
 	} else {
-		segSiteStr += fmt.Sprintf("%d ", len(ns))
-		k := []int{-1}
+		segSiteStr += fmt.Sprintf("%d", len(ns))
+		var k []int
 		for i := seg.s; i < seg.end(); i++ {
 			if ns[i] {
 				k = append(k, i-seg.s)
 			}
 		}
-		k = append(k, -1)
-		for i := 1; i < len(k)-1; i++ {
-			prev := k[i] == k[i-1]+1
-			next := k[i] == k[i+1]-1
-			if prev && next {
-				continue
-			}
+		for i := 1; i < len(k); i++ {
 			coord := k[i]
 			if printOneBased {
 				coord = k[i] + 1
 			}
-			if next {
-				segSiteStr += fmt.Sprintf("[%d", coord)
-			} else if prev {
-				segSiteStr += fmt.Sprintf(":%d] ", coord)
-			} else {
-				segSiteStr += fmt.Sprintf("%d ", coord)
-			}
+			segSiteStr += fmt.Sprintf(" %d", coord)
 		}
 	}
 	return segSiteStr

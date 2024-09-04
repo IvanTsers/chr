@@ -91,8 +91,8 @@ func containsData(slice []*fasta.Sequence,
 func TestSort(t *testing.T) {
 	var starts []int
 	var segments []seg
+	rand.Seed(time.Now().UnixNano())
 	for i := 0; i < 12; i++ {
-		rand.Seed(time.Now().UnixNano())
 		rs := rand.Intn(1000000000)
 		rl := 1 + rand.Intn(999999999)
 		starts = append(starts, rs)
@@ -164,7 +164,8 @@ func TestReduceOverlaps(t *testing.T) {
 			h.reduceOverlaps()
 			get := h.S
 			if !reflect.DeepEqual(get, tc.want) {
-				t.Errorf("\nwant:\n%v\nget:\n%v\n", tc.want, get)
+				t.Errorf("\nwant:\n%v\nget:\n%v\n",
+					tc.want, get)
 			}
 		})
 	}
@@ -311,15 +312,22 @@ func TestIntersect(t *testing.T) {
 			wConcat := fasta.Concatenate(want, 0)
 			gConcat := fasta.Concatenate(get, 0)
 			if len(wConcat.Data()) != len(gConcat.Data()) {
-				t.Errorf("\nthe result has %d nucleotides, expected %d",
-					len(gConcat.Data()), len(wConcat.Data()))
+				t.Errorf("\nthe result has %d nucleotides, "+
+					"expected %d",
+					len(gConcat.Data()),
+					len(wConcat.Data()))
 			}
 			for i := 0; i < minLen; i++ {
 				if !containsData(get, want[i]) {
-					t.Errorf("\nwant:'%v' is absent from results:\n%v\n",
-						want[i].Header(), string(want[i].Data()))
+
+					t.Errorf("\nwant:'%v' is absent "+
+						"from results:\n%v\n",
+						want[i].Header(),
+						string(want[i].Data()))
+
 					t.Errorf("\nget: '%v'\n%v\n",
-						get[i].Header(), string(get[i].Data()))
+						get[i].Header(),
+						string(get[i].Data()))
 				}
 			}
 		})

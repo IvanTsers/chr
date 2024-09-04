@@ -16,9 +16,9 @@ and functions.
 \subsection{\textbf{Data structure \ty{Homologs}}}
 !Data structure \ty{Homologs} describes homologous regions of a
 !subject found in queries. This data type contains a slice of segments
-!of the subject \ty{S} and a map of segregation sites \ty{N}.
+!of the subject \ty{S} and a map of segregating sites \ty{N}.
 
-The data structure \ty{seg} contains a start \ty{s} and a length
+The data structure \ty{seg} contains the start \ty{s} and the length
 \ty{l} of a segment, as defined in Section~\ref{Data structure seg}.
 #+end_export
 #+begin_src go <<Data structures>>=
@@ -47,8 +47,8 @@ We import \ty{sort}.
 #+end_src
 #+begin_export latex
 \subsubsection{Method \ty{reduceOverlaps}}
-This method reduces a slice of overlapping homologous regions
-\ty{Homologs.S} to a slice of non-overlapping homologous regions of
+This method reduces a slice of overlapping homologous regions,
+\ty{Homologs.S}, to a slice of non-overlapping homologous regions of
 the longest total length.
 
 If slice \ty{Homologs.S} does not contain at least two elements, we
@@ -100,9 +100,9 @@ We also initialize the first elements for \ty{score} and
 #+begin_export latex
 We calculate the chain score to maximize the number of non-overlapping
 segments in \ty{segs}. Starting from the second segment, we traverse
-each segment starting from the second element. For each \ty{segs[i]},
-we find its preceding segment \ty{segs[k]} that can form the longest
-chain ending before \ty{segs[i]} starts.
+each segment. For each \ty{segs[i]}, we find its preceding segment
+\ty{segs[k]} that can form the longest chain ending before
+\ty{segs[i]} starts.
 #+end_export
 #+begin_src go <<Calculate chain score>>=
   for i := 1; i < slen; i++ {
@@ -125,12 +125,12 @@ chain ending before \ty{segs[i]} starts.
   }
 #+end_src
 #+begin_export latex
-We are to find \ty{s}, which is the index of the highest-score segment
-in \texttt{segs}. This segment is the final link in the chain we're
-looking for, and its score is the total score of the chain. To find
-\ty{s}, we will use the \ty{argmax} function, which we will define
-shortly. Once we identify \ty{s}, we go through \ty{predecessor} links
-and mark the segments in \ty{visited}.
+We are to find \ty{s}, which is the index of the highest-scoring
+segment in \texttt{segs}. This segment is the final link in the chain
+we're looking for, and its score is the total score of the chain. To
+find \ty{s}, we will use the \ty{argmax} function, which we will
+define shortly. Once we identify \ty{s}, we go through the chain of
+\ty{predecessor} links and mark the visited segments in \ty{visited}.
 #+end_export
 #+begin_src go <<Backtrack the chain>>=
   s := argmax(score)
@@ -140,7 +140,7 @@ and mark the segments in \ty{visited}.
   }
 #+end_src
 #+begin_export latex
-The function \ty{argmax} returns index of the maximum value in the
+The function \ty{argmax} returns the index of the maximum value in the
 input slice of integers.
 #+end_export
 #+begin_src go <<Functions>>=
@@ -155,7 +155,7 @@ input slice of integers.
   }
 #+end_src
 #+begin_export latex
-We extract only visited elements of \ty{segs} and set the new value of
+We extract only visited elements from \ty{segs} and set the new value of
 \ty{h.S}.
 #+end_export
 #+begin_src go <<Return the chain>>=
@@ -181,8 +181,8 @@ and length of a region of a subject sequence.
 #+end_src
 #+begin_export latex
 \subsubsection{Method \ty{end}}
-The method \ty{end()} returns an inclusive coordinate of the end of a
-\ty{seg}. Thus, the package operates with zero-based end-inclusive
+The method \ty{end()} returns an exclusive coordinate of the end of a
+\ty{seg}. Thus, the package operates with zero-based, end-exclusive
 coordinates.
 #+end_export
 #+begin_src go <<Methods>>=
@@ -208,12 +208,12 @@ contains:
 \begin{itemize}
   \itemsep0em
   \item an enhanced suffix array (ESA), as described in the package
-    \ty{esa}; note that an \ty{esa.Esa} structure has the filed \ty{T}
+    \ty{esa}; note that an \ty{esa.Esa} structure has the field \ty{T}
     holding the original sequence;
-  \item a total length of the sequence;
-  \item a length of the forward strand of the sequence;
+  \item the total length of the sequence;
+  \item the length of the forward strand of the sequence;
   \item the minimum anchor length for the sequence;
-  \item headers of contigs used to build the ESA;
+  \item headers of the contigs used to build the ESA;
   \item coordinates of the contigs on the \ty{Esa.T}.
 \end{itemize}
 #+end_export
@@ -253,7 +253,7 @@ compared to the subject. A \ty{query} contains:
 #+end_src
 #+begin_export latex
 \subsubsection{Method \ty{updSuffix}}
-This method updates the \ty{suffix} field with a prefix starting at
+This method updates the \ty{suffix} field with a suffix starting at
 the position \ty{x}.
 #+end_export
 #+begin_src go <<Methods>>=
@@ -285,17 +285,18 @@ contains:
 \subsection{\textbf{Data structure \ty{Parameters}}} \label{Data structure Parameters}
 !Fields of this data structure contain parameters used to call
 !\ty{Intersect()}. The parameters include:
-
+!
 !1) a reference;
 !2) path to the directory of target genomes \textit{minus the reference};
 !3) threshold, the minimum fraction of intersecting genomes;
 !4) p-value of the shustring length (needed for \ty{sus.Quantile});
-!5) a switch to clean* subject's sequence;
-!6) a switch to clean* query's sequences;
-!7) a switch to print positions of segregation sites in output's headers;
+!5) a switch to clean* subject sequence;
+!6) a switch to clean* query sequences;
+!7) a switch to print positions of segregating sites in output headers;
 !8) a switch to print \ty{N} at the positions of mismatches;
 !8) a switch to print one-based coordinates.
 !*To clean a sequence is to remove non-ATGC nucleotides.
+
 
 \ty{Intersect} is defined in Section~\ref{Intersect}.
 #+end_export
@@ -321,7 +322,7 @@ We import \ty{fasta}.
 #+begin_export latex
 \subsection{\textbf{Function \ty{Intersect}}} \label{Intersect}
 !The function \ty{Intersect} accepts a struct of \ty{Parameters} and
-!returns sequences of homologous regions, common for subject
+!returns sequences of homologous regions, common to subject
 !(reference) and query sequences.
 
 The data structure \ty{Parameters} is defined in Section~\ref{Data
@@ -359,8 +360,8 @@ to the default \ty{0.95}.
 #+end_src
 #+begin_export latex
 We open the directory and check for an error. If there is one, we
-report it and stop. If there is no error, we count files in the target
-directory.
+report it and stop. If there is no error, we count the files in the
+target directory.
 #+end_export
 #+begin_src go <<Count files in \ty{d/}>>=
   dirEntries, err := os.ReadDir(d)
@@ -380,13 +381,13 @@ We import \ty{os} and \ty{fmt}.
 #+end_src
 #+begin_export latex
 \subsubsection{Prepare the subject}
-The preparation of the subject implies the following steps:
+The preparation of the subject comprises the following steps:
 \begin{itemize}
   \itemsep0em
   \item initialize a \ty{subject} struct (Section~\ref{Data structure
     subject});
   \item normalize the subject's contigs;
-  \item process the subject's contigs';
+  \item process the subject's contigs;
   \item calculate the minimum anchor length;
   \item build an ESA;
   \item populate the \ty{subject} struct.
@@ -417,8 +418,8 @@ been set to \ty{true}.
 #+begin_export latex
 We extract the first subject sequence's \ty{Header} and
 \ty{Data}. Then we use them to initialize the fields describing the
-subject's contigs. Most likely, there will be more than one contig, so
-we concatenate them.
+subject's contigs. If there is more than one contig, we concatenate
+all contigs into one sequence.
 #+end_export
 #+begin_src go <<Process the contigs>>=
   subjectHeader := r[0].Header()
@@ -432,13 +433,13 @@ we concatenate them.
 #+end_src
 #+begin_export latex
 We traverse the slice of subject sequences, extract their headers and
-data. We append the header to the slice of contig
-headers. Then we append an exclamation mark to the combined subject
-data and increase the total length by one. The new total length gives
-us the start of the contig on the concatenated subject data. We create
-a \ty{seg} and append it to the slice of contig segments. Finally, we
-append the contig's data to the combined subject's data and increase
-the total length.
+data. We append the header to the slice of contig headers. Then we
+append an exclamation mark to the combined subject data and increment
+the total length by one. The new total length gives us the start of
+the contig on the concatenated subject data. We create a \ty{seg} and
+append it to the slice of contig segments. Finally, we append the
+contig's data to the combined subject's data and increment the total
+length.
 #+end_export
 #+begin_src go <<Concatenate subject's contigs>>=
   for i := 1; i < len(r); i++ {
@@ -456,8 +457,8 @@ the total length.
   }
 #+end_src
 #+begin_export latex
-We calculate GC content of the subject and use it to find the length
-of a non-random shustring. The latter task is delegated to
+We calculate the GC content of the subject and use it to find the
+length of a non-random shustring. The latter task is delegated to
 \ty{sus.Quantile}, which we use with the shustring p-value specified
 in \ty{parameters.ShustrPval} that we also refer to as \ty{pval}.
 #+end_export
@@ -524,7 +525,7 @@ write. We append the output of this function to the \ty{Homologs}.
 #+begin_export latex
 We initialize and populate a \ty{query} struct (Section~\ref{Data
   structure query}). We build a path to a query file, read all
-sequences from it, concatenate and normalize them (clean when asked,
+sequences from it, concatenate and normalize them (clean if asked to,
 convert to uppercase always). Then we set the values for the \ty{seq}
 and \ty{l} fields.
 #+end_export
@@ -546,15 +547,15 @@ and \ty{l} fields.
 The function \ty{findHomologs} accepts structs of \ty{subject} and
 \ty{query}. The function returns a \ty{Homologs} struct.
 
-We initialize variables to operate with during the search of
-homologies, conduct the search, reduce overlaps, and return the
+We initialize variables to operate with during the search for
+homologs, conduct the search, reduce overlaps, and return the
 results. If no homologs were found, we return an empty \ty{Homologs}
 slice, which is still a valid result.
 #+end_export
 #+begin_src go <<Functions>>=
   func findHomologs(query query, subject subject) Homologs { 
 	  h := Homologs{S: []seg{}, N: make(map[int]bool)}
-	  //<<Initialize the search of homologs>>
+	  //<<Initialize the search for homologs>>
 	  //<<Anchor search>>
 	  h.reduceOverlaps()
 	  return h
@@ -567,23 +568,22 @@ We declare variables to operate with during the search. These are:
   \item current and previous positions in the query;
   \item current and previous \ty{matches}:
   \item a \ty{segment};
-  \item an indicator of the right anchor;
+  \item an indicator as to whether the right anchor exists;
 \end{itemize}
 #+end_export
-#+begin_src go <<Initialize the search of homologs>>=
+#+begin_src go <<Initialize the search for homologs>>=
   var qc, qp int
   var c, p match
   var seg seg
   rightAnchor := false
 #+end_src
 #+begin_export latex
-We perform the anchor search for each suffix in our query. We update
-the \ty{suffix} field of the \ty{query} with a suffix starting at the
+We perform the anchor search in a suffix of our query. We update the
+\ty{suffix} field of the \ty{query} with a suffix starting at the
 current position and ends at the last byte of the query sequence. Then
 we search for an anchor. There are two scenarios: 1) there is a match
-that starts right after the last mismatch, 2) there is a 'remote'
-match somewhere else in the ESA. There are two functions to be
-written.
+that starts right after the last mismatch, 2) there is a distant match
+somewhere else in the ESA. There are two functions to be written.
 
 In the first case, we try to find the longest common prefix (LCP) at
 the given positions in query and subject sequences using the function
@@ -635,15 +635,21 @@ We call \ty{lcpAnchor}, which we will define shortly.
   lcpAnchor(&c, &p, query, subject, qc, qp)
 #+end_src
 #+begin_export latex
-The function \ty{lcpAnchor} accepts the following inputs: 1) a pointer
-to the current match \ty{c}; 2) a ponter to the previous match \ty{p};
-3) a \ty{query} struct; 4) a \ty{subject} struct; 5) current and
-previous positions in the query.  Regardless of the significance of
-the match, the function updates the start and the length of the
-current match.
+The function \ty{lcpAnchor} accepts the following inputs:
+\begin{enumerate}
+  \itemsep0em
+  \item a pointer to the current match \ty{c};
+  \item a ponter to the previous match \ty{p};
+  \item a \ty{query} struct;
+  \item a \ty{subject} struct;
+  \item current and previous positions in the query.
+\end{enumerate}
+
+Regardless of the significance of the match, the function updates the
+start and the length of the current match.
 
 First, the function calculates the gap between the current and
-previous positions in the query, and determines a position in the
+previous positions in the query and determines a position in the
 subject to attempt matching the longest common prefix (LCP). If this
 position is beyond the end of the subject or if the gap is larger than
 the minimum anchor length (meaning it's not random), the function
@@ -692,9 +698,16 @@ We call \ty{esaAnchor} to find a match in the ESA.
   esaAnchor(&c, query, subject)
 #+end_src
 #+begin_export latex
-The function \ty{esaAnchor} accepts: 1) a pointer to the current match
-\ty{c}; 2) the \ty{query} struct; 3) the \ty{subject} struct. The
-function returns a boolean. Regardless of the significance of the
+The function \ty{esaAnchor} accepts:
+
+\begin{enumerate}
+  \itemsep0em
+  \item a pointer to the current match \ty{c};
+  \item the \ty{query} struct;
+  \item the \ty{subject} struct.
+\end{enumerate}
+
+The function returns a boolean. Regardless of the significance of the
 match, the function updates the start and the length of the current
 match.
 
@@ -716,16 +729,16 @@ unique match ends on a leaf.
 #+end_src
 #+end_export
 #+begin_export latex
-We analyze if the match:
+We determine if the match:
 \begin{itemize}
   \itemsep0em
-  \item starts in the subject after previous match;
-  \item is equidistant with previous match in the subject and
+  \item starts in the subject after the previous match;
+  \item is equidistant with the previous match in the subject and
     query;
-  \item is located on the same strand in the subject as previous
+  \item is located on the same strand in the subject as the previous
     match.
 \end{itemize}
-If these criteria are met, we qualify the current segment as
+If these criteria are met, we label the current segment as
 extendible.
 #+end_export
 #+begin_src go <<Analyze current match>>=
@@ -801,9 +814,9 @@ We update the previous position in the query and the previous match.
 We use the set of homologous regions that we have discovered so far to
 identify regions of the subject that are found in a given fraction of
 the target genomes. We interpret the threshold fraction (a
-\ty{Parameters} field), Section~\ref{Data structure Parameters}), then
+\ty{Parameters} field, Section~\ref{Data structure Parameters}), then
 we calculate pile heights, that is, how many times a nucleotide of the
-subject is covered by piled up homologous regions. Thereafter, we
+subject is covered by piled-up homologous regions. Thereafter, we
 convert them to segments, and then get the actual sequences
 corresponding to the segments. This task is delegated to the function
 \ty{pileHeights}, which is yet to be written.
@@ -817,15 +830,14 @@ corresponding to the segments. This task is delegated to the function
 #+begin_export latex
 We calculate the product of the threshold fraction $f$
 (\ty{parameters.Threshold}) and $g$, which is the total number of
-genomes taken into the analysis \textit{excluding} the implied
-subject. This number corresponds to the number of files in
-\ty{Parameters.TargetDir} given that the directory does not contain
-the reference.
+genomes being analyzed \textit{excluding} the implied subject. This
+number corresponds to the number of files in the \ty{TargetDir} given
+that the directory does not contain the reference.
 
 We round the product down to the nearest integer, but if the latter
 happens to be zero, we set the value to 1. Thus, we will be always
-trying to find the partial intersection for any $0 < f \le 1$ and $g
-\ge 1$.
+trying to find the complete or partial intersection for any $0 < f \le
+1$ and $g \ge 1$.
 #+end_export
 #+begin_src go <<Interpret the threshold fraction>>=
   f := parameters.Threshold
@@ -844,7 +856,7 @@ We import \ty{math}.
 #+begin_export latex
 \subsubsection{Calculate pile heights}
 The function \ty{pileHeights} counts how many times a position in the
-subject is covered with homologous segments found in queries.
+subject is covered by homologous segments found in queries.
 #+end_export
 #+begin_src go <<Functions>>=
   func pileHeights(h Homologs, strandL int) []int {
@@ -863,13 +875,13 @@ subject is covered with homologous segments found in queries.
 Once we have pile heights at hand, we can convert them to actual
 segments of the reference. If the reference has been cleaned, two
 adjacent homologous segments can be merged into one. The cleaning
-implies removal of non-conventioonal nucleotides, that is, keeping
-only \ty{A, T, G, C}. The removal shifts proper nucleotides that
-followed the removed characters to the left. As the result, two
-regions separated in the original sequence become adjacent in the
-cleaned sequence (Figure~\ref{fig:MatchEnds}, A). This creates a risk
-of an incorrect interpretation of pile heights unless match ends are
-not neglected (Figure~\ref{fig:MatchEnds}, B).
+implies removal of non-canonical nucleotides, that is, keeping only
+\ty{A, T, G, C}. The removal shifts proper nucleotides that followed
+the removed characters to the left. As the result, two regions
+separated in the original sequence become adjacent in the cleaned
+sequence (Figure~\ref{fig:MatchEnds}, A). This creates a risk of an
+incorrect interpretation of pile heights unless match ends are not
+neglected (Figure~\ref{fig:MatchEnds}, B).
 
 \begin{figure}[H]
     \includegraphics[width=\linewidth]{figMatchEnds.eps}
@@ -885,26 +897,32 @@ not neglected (Figure~\ref{fig:MatchEnds}, B).
       queries. The red line marks the right border of the segment
       ending with \ty{TTTGT}. If the pile heights were converted to
       the final output without considering this border, they would
-      produce a chimeric sequence, which is an incorrect result.}
+      produce a chimeric sequence, which does not exist in the
+      reference.}
     \label{fig:MatchEnds}
 \end{figure}
 
 To avoid chimeric sequences in the output, we create 'a map of
-adjacency'. This map holds ends of the left segment from a pair. The
+adjacency'. This map holds ends of the left segments from pairs. The
 creation of this map is delegated to the \ty{makeMapAdj} function,
-which is not written so far. Then we perform the conversion and return
-the segments that make up the intersection.
+which is not written so far. If we haven't opted for cleaning the
+subject, we just proceed with an empty map without calling the
+\ty{makeMapAdj}. Once the map is built. we perform the conversion and
+return the segments that make up the intersection.
 #+end_export
 #+begin_src go <<Convert pile heights to homologous segments>>=
-  isAdj := makeMapAdj(homologs)
+  isAdj := make(map[int]bool)
+  if parameters.CleanQuery {
+	  isAdj = makeMapAdj(homologs)
+  }
   intersection := pileToSeg(p, t, isAdj)
   homologs.S = intersection
 #+end_src
 #+begin_export latex
 We define the function \ty{makeMapAdj}. We search for such pairs of
 segments, where the end of the left segment is immideately followed by
-the start of the right segment. In terms of 0-based coordinates, this
-implies that the start and the end share the same coordinate.
+the start of the right segment. In terms of end-exclusive coordinates,
+this implies that the start and the end share the same coordinate.
 
 We declare two auxullary variables, \ty{starts} (a map of booleans
 with integer keys) and \ty{ends} (a slice of integers). Then we use
@@ -1050,8 +1068,8 @@ slice of bytes, and append bytes to it.
   }
 #+end_src
 #+begin_export latex
-We decide if the next byte is going to be a nucleotide of the subject
-or an \ty{N}.
+We decide whether the next byte is going to be a nucleotide of the
+subject or an \ty{N}.
 #+end_export
 #+begin_src go <<Append next byte to the data>>=
   if printN && ns[j] {
@@ -1061,14 +1079,18 @@ or an \ty{N}.
   }
 #+end_src
 #+begin_export latex
-We construct sequence's header. It shall contain the orginal contig's
-header, as well as start and end coordinates on it. To find those, we
-call \ty{findSegment}, which we still have to implement. We convert
-zero-based end-inclusive coordinates to one-based end-exclusive
-coordinates if the respective switch is set to \ty{true}. If
-\ty{printSegSitePos} has been switched to \ty{true}, we build segsite
-positions string with a custom function, which is yet to be
-defined. Then we append the string to the header.
+We construct the sequence's header that contains the orginal contig's
+header \ty{ch}, as well as the start (\ty{cs}) and the end (\ty{ce})
+coordinates on it:
+\begin{verbatim}
+ch\t(cs..ce)
+\end{verbatim}
+To find those, we call \ty{findSegment}, which we still have to
+implement. We convert zero-based end-exclusive coordinates to
+one-based end-exclusive coordinates if the respective switch is set to
+\ty{true}. If \ty{printSegSitePos} has been switched to \ty{true}, we
+build segsite positions string with the \ty{buildSegSiteStr} function,
+which is yet to be defined. Then we append the string to the header.
 #+end_export
 #+begin_src go <<Construct sequence's header>>=
   ch, cs, ce := findSegment(seg, subject)
@@ -1076,7 +1098,7 @@ defined. Then we append the string to the header.
 	  cs += 1
 	  ce += 1
   }
-  header := fmt.Sprintf("%s (%d..%d)", ch, cs, ce)
+  header := fmt.Sprintf("%s\t(%d..%d)", ch, cs, ce)
   if printSegSitePos {
 	  segsites := buildSegSiteStr(seg, ns, printOneBased)
 	  header += " " + segsites
@@ -1085,15 +1107,16 @@ defined. Then we append the string to the header.
 #+begin_export latex
 \subsubsection{Auxillary functions for output formatting}
 \textbf{\ty{findSegment}} accepts a segment and a struct of
-\ty{subject}. It finds the subject's contig, to which the segment
-belongs, and returns its header and coordinates of the segment on the
-contig.
+\ty{subject}. It finds the subject contig, to which the segment
+belongs, and returns its header and the coordinates of the segment on
+the contig.
 
 We initialize the output variables and 'unpack' some fields of the
-\ty{subject}. Then we check if our segment is within some of the
-contigs. If so, we get its header, get the segment's start and end
+\ty{subject}. Then we check whether our segment is within some of the
+contigs using the function \ty{isWithin}, which we still need to
+write. If so, we get its header and get the segment's start and end
 coordinates. A segment can be found only once, so we break as soon as
-its contig is identified. We are to write the function \ty{isWithin}.
+its contig is identified.
 #+end_export
 #+begin_src go <<Functions>>=
   func findSegment(seg seg, subject subject) (string, int, int) {
@@ -1122,19 +1145,18 @@ an outer \ty{seg}.
   }
 #+end_src
 #+begin_export latex
-\textbf{\ty{buildSegSiteStr}} accepts a segment, a map of
-segregation sites (\ty{Homologs.N}), and a switch for printing
-one-based coordinates. It builds a string of segregation site
-coordinate ranges. Imagine a homologous region that has substitutions
-at positions 2, 4, 6, 7, 8, 10 (6 in total). The \ty{segSiteStr}
-of this sequence has the following format:
+\textbf{\ty{buildSegSiteStr}} accepts a segment, a map of segregating
+sites (\ty{Homologs.N}), and a switch for printing one-based
+coordinates. It builds a string of segregating site
+coordinates. Imagine a homologous region that has substitutions at
+positions 2, 4, 6, 7, 8, 10 (6 in total). The \ty{segSiteStr} of this
+sequence has the following format:
 \begin{verbatim}
-6 2 4 [6:8] 10
+6 2 4 6 7 8 10
 \end{verbatim}
- We calculate the number of segregation sites and begin to build our
- \ty{segSiteStr}. Segregation sites make sense only in the
- context of homologous regions, so we add only sites found within a
- the specificed segment.
+ We calculate the number of segregating sites and begin to build our
+ \ty{segSiteStr}. We report only sites found within the specificed
+ segment.
 #+end_export
 #+begin_src go <<Functions>>=
   func buildSegSiteStr(seg seg, ns map[int]bool,
@@ -1143,7 +1165,7 @@ of this sequence has the following format:
 	  if len(ns) == 0 {
 		  segSiteStr = "0"
 	  } else {
-		  segSiteStr += fmt.Sprintf("%d ", len(ns))
+		  segSiteStr += fmt.Sprintf("%d", len(ns))
 		  //<<Add segsites found within the \ty{seg}>>
 	  }
 	  return segSiteStr
@@ -1151,19 +1173,18 @@ of this sequence has the following format:
 #+end_src
 #+begin_export latex
 We extract the relevant positions and store them in the slice
-\ty{k}. Then we scan the slice for ranges.
+\ty{k}. Then we append these positions to our \ty{segSiteStr}.
 #+end_export
 #+begin_src go <<Add segsites found within the \ty{seg}>>=
-  k := []int{-1}
+  var k []int
   //<<Extract relevant positions>>
-  for i := 1; i < len(k) - 1; i++ {
-	  //<<Scan for segsite ranges>>
+  for i := 1; i < len(k); i++ {
+	  //<<Append a segsite>>
   }
 #+end_src
 #+begin_export latex
-We traverse \ty{ns} from the start to the end of the segment, find
-existing keys, and save the coordinate in a slice. We flank the slice
-of those keys with \ty{-1}.
+We traverse the segregating sites of the current segment, find
+existing keys, and save the coordinate in a slice.
 #+end_export
 #+begin_src go <<Extract relevant positions>>=
   for i := seg.s; i < seg.end(); i++ {
@@ -1171,32 +1192,14 @@ of those keys with \ty{-1}.
 		  k = append(k, i - seg.s)
 	  }
   }
-  k = append(k, -1)
 #+end_src
 #+begin_export latex
-We check if \ty{k[i]} is surrounded by preceding and consecutive
-numbers. We format the output depending on the combination of possible
-outcomes. If \ty{k[i]} is surrounded by such numbers, we proceed with
-\ty{k[i]}. If the consecutive value exists, we open square
-brackets. Should the preceding, but not the following value exist, we
-close brackets. If there are no next and previous values, we print
-\ty{k[i]}.  Before printing the output, we decide, which coordinate
-system we use.
+Before printing the output, we chose between one- and zero-based
+coordinate system.
 #+end_export
-#+begin_src go <<Scan for segsite ranges>>=
-  prev := k[i] == k[i-1]+1
-  next := k[i] == k[i+1]-1
-  if prev && next {
-	  continue
-  }
+#+begin_src go <<Append a segsite>>=
   //<<One- or zero-based coord?>>
-  if next {
-	  segSiteStr += fmt.Sprintf("[%d", coord)
-  } else if prev {
-	  segSiteStr += fmt.Sprintf(":%d] ", coord)
-  } else {
-	  segSiteStr += fmt.Sprintf("%d ", coord)
-  }
+  segSiteStr += fmt.Sprintf(" %d", coord)
 #+end_src
 #+begin_export latex
 We check the \ty{printOneBased} switch and adjust the coordinate if
