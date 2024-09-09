@@ -333,3 +333,21 @@ func TestIntersect(t *testing.T) {
 		})
 	}
 }
+func TestShiftRefSeg(t *testing.T) {
+	want := fmt.Sprintf("t1\t(%d..%d)",
+		2+4477, 1052+4477)
+	ref := readFasta("data/i/shift/s1.fasta")
+	parameters := Parameters{
+		Reference:     ref,
+		ShiftRefRight: true,
+		TargetDir:     "data/i/shift/t",
+		Threshold:     1.0,
+		PrintOneBased: true,
+	}
+	isc := Intersect(parameters)
+	get := isc[0].Header()
+	if want != get {
+		t.Errorf("\nwant:\n%v\nget:\n%v\n",
+			want, get)
+	}
+}

@@ -214,7 +214,8 @@ contains:
   \item the length of the forward strand of the sequence;
   \item the minimum anchor length for the sequence;
   \item headers of the contigs used to build the ESA;
-  \item coordinates of the contigs on the \ty{Esa.T}.
+  \item coordinates of the contigs on the \ty{Esa.T};
+  \item size of shifts applied to the contig starts (see Section~\ref{Shifts})
 \end{itemize}
 #+end_export
 #+begin_src go <<Data structures>>=
@@ -225,6 +226,7 @@ contains:
 	  a int
 	  contigHeaders []string
 	  contigSegments []seg
+	  contigShifts map[string]int
   }
 #+end_src
 #+begin_export latex
@@ -287,22 +289,23 @@ contains:
 !\ty{Intersect()}. The parameters include:
 !
 !1) a reference;
-!2) path to the directory of target genomes \textit{minus the reference};
-!3) threshold, the minimum fraction of intersecting genomes;
-!4) p-value of the shustring length (needed for \ty{sus.Quantile});
-!5) a switch to clean* subject sequence;
-!6) a switch to clean* query sequences;
-!7) a switch to print positions of segregating sites in output headers;
-!8) a switch to print \ty{N} at the positions of mismatches;
+!2) a switch to shift reference contig start coordinates to the rigth;
+!3) path to the directory of target genomes \textit{minus the reference};
+!4) threshold, the minimum fraction of intersecting genomes;
+!5) p-value of the shustring length (needed for \ty{sus.Quantile});
+!6) a switch to clean* subject sequence;
+!7) a switch to clean* query sequences;
+!8) a switch to print positions of segregating sites in output headers;
+!9) a switch to print \ty{N} at the positions of mismatches;
 !8) a switch to print one-based coordinates.
 !*To clean a sequence is to remove non-ATGC nucleotides.
-
 
 \ty{Intersect} is defined in Section~\ref{Intersect}.
 #+end_export
 #+begin_src go <<Data structures>>=
   type Parameters struct{
 	  Reference []*fasta.Sequence
+	  ShiftRefRight bool
 	  TargetDir string
 	  Threshold float64
 	  ShustrPval float64
@@ -319,6 +322,67 @@ We import \ty{fasta}.
 #+begin_src go <<Imports>>=
   "github.com/ivantsers/fasta"
 #+end_src
+#+begin_export latex
+\subsubsection{Coordinate systems: parameter \ty{ShiftRefRight}}\label{Shifts}
+The parameter \ty{ShiftRefRight} is useful when the \ty{Reference}
+for \ty{Intersect} is a subset of the original sequence. Such a subset
+can result from a sequence filtering, during which parts of the
+original reference contigs are getting removed, causing a left shift
+of the start coordinates in the downstream regions. An example of this
+is the program \ty{fur}~\cite{hau21:fur}, which processes an original
+sequence (a representative genome) by removing non-unique regions in
+the Subtraction 1 step, often causing splits in the reference contigs.
+
+If a subset of the original reference is used as the input for
+\ty{Intersect}, the output coordinates cannot be directly compared to
+the coordinates of the original contigs. In this case, we might want
+the output to have coordinates compatible with the original
+sequence. To make the coordinates compatible, we shift the output
+coordinates to the right (Figure~\ref{fig:RightShift}).
+
+\begin{figure}
+  \centering
+  \includegraphics[width=0.65\linewidth]{figRightShift.eps}
+  \caption{Coordinates of output sequences $I$ yielded by an
+    \ty{Intersect} run, where a subset $S$ of the original sequence
+    $R$ was used as the \ty{Reference}. To make the coordinates of $I$
+    compatible with the original contig $R$, we must adjust their
+    positions on the contigs $s_1$ and $s_2$ by adding starts of the
+    respective contigs to the starts of $I$ parts within these
+    contigs. $R\{start,end\}$ show coordinates of $I$ on the original
+    reference $R$; $s_n\{start, end\}$ show coordinates of $I$ on the
+    subset $S$. \textbf{Note that \ty{Intersect} uses $S$ coordinates
+      for all internal calculations, and the conversion to $R$
+      coordinates happens only when the results are being printed.}}
+  \label{fig:RightShift}
+\end{figure}
+
+By default (when \ty{ShiftRefRight} is \ty{false}), each reference
+contig is treated by \ty{Intersect} as its own coordinate system,
+starting at 0, with the (exclusive) end coinciding with the length of
+the contig:
+\begin{verbatim}
+0..length
+\end{verbatim}
+If the parameter \ty{ShiftRefRight} is \ty{true}, we shift the output
+start coordinates to the right. We cannot determine the size of the
+shift without a direct comparison of the \ty{Reference} to the
+original sequence. This would be a resource-intensive task to carry
+out within the \ty{chr} package. However, it’s usually possible to
+calculate the new coordinates before calling \ty{Intersect}. Thusm we
+expect the new start coordinates to be included in the headers of the
+subsetted reference in this format:
+\begin{verbatim}
+>subsetContigName$x
+\end{verbatim}
+where \ty{x} is the start of the contig in the original reference. We
+use the dollar sign \ty{\$} to safely delimit the name and the
+coordinate. Thus, \textbf{if you plan to use \ty{Intersect} on a
+  subsetted reference but want the output to show the original
+  coordinates, consider adding the suffix \ty{\$x} (zero-based) to the
+  headers of the pre-processed sequences.} These will be recognized by
+\ty{Intersect} when \ty{ShiftRefRight} is enabled.
+#+end_export
 #+begin_export latex
 \subsection{\textbf{Function \ty{Intersect}}} \label{Intersect}
 !The function \ty{Intersect} accepts a struct of \ty{Parameters} and
@@ -380,12 +444,12 @@ We import \ty{os} and \ty{fmt}.
   "fmt"
 #+end_src
 #+begin_export latex
-\subsubsection{Prepare the subject}
+\subsubsection{Prepare the subject} \label{Prepare the subject}
 The preparation of the subject comprises the following steps:
 \begin{itemize}
   \itemsep0em
   \item initialize a \ty{subject} struct (Section~\ref{Data structure
-    subject});
+    subject}) and some of its fields;
   \item normalize the subject's contigs;
   \item process the subject's contigs;
   \item calculate the minimum anchor length;
@@ -395,6 +459,7 @@ The preparation of the subject comprises the following steps:
 #+end_export
 #+begin_src go <<Prepare the \ty{subject}>>=
   var subject subject
+  subject.contigShifts = make(map[string]int)
   //<<Normalize the contigs>>
   //<<Process the contigs>>
   //<<Calculate the minimum anchor length>>
@@ -416,14 +481,26 @@ been set to \ty{true}.
   }
 #+end_src
 #+begin_export latex
-We extract the first subject sequence's \ty{Header} and
-\ty{Data}. Then we use them to initialize the fields describing the
+We 'unpack' the \ty{ShiftRefRight} fieild of the parameters, then
+extract the first subject sequence's \ty{Header} and
+\ty{Data}. Thereafter, we respond to \ty{ShiftRefRight} by calling the
+function \ty{extractShiftField}, which we will define shortly. The
+function will try to read the shift field \ty{\$x} from the header. We
+proceed with the initialization of the the fields describing the
 subject's contigs. If there is more than one contig, we concatenate
 all contigs into one sequence.
 #+end_export
 #+begin_src go <<Process the contigs>>=
+  shiftRefRight := parameters.ShiftRefRight
   subjectHeader := r[0].Header()
   subjectData := r[0].Data()
+  if shiftRefRight {
+	  err := extractShiftField(&subjectHeader, &subject)
+	  if err != nil {
+		  fmt.Fprint(os.Stderr, err)
+		  os.Exit(1)
+	  }
+  }
   contigHeaders := []string{subjectHeader}
   contigSegs := []seg{newSeg(0, len(subjectData))}
   cL := len(subjectData)
@@ -432,14 +509,89 @@ all contigs into one sequence.
   }
 #+end_src
 #+begin_export latex
+\subsubsection{Read the reference contig shift}
+The function \ty{extractShiftField} accepts pointers to a header
+and the \ty{subject} struct. It is supposed to update the
+\ty{subject.contigShifts} map if the input header contains the shift
+field \ty{\$x} (Section~\ref{Shifts}). The function's only return is
+an error.
+
+We initialize an error, then check whether our input variables are
+\ty{nil}. Then we create a regular expression, parse the header, and
+create error messages if there are problems with the parsing. Once we
+have read the shift field, we remove it from the header and update the
+shifts map of the \ty{subject} struct.
+#+end_export
+#+begin_src go <<Functions>>=
+  func extractShiftField(header *string, subject *subject) error {
+	  var err error
+	  //<<Are the inputs \ty{nil}?>>
+	  shift := 0
+	  re := regexp.MustCompile(`\$\d+`)
+	  match := re.FindString(*header)
+	  if match == "" {
+		  //<<Error of matching>>
+	  } else {
+		  s, errConv := strconv.Atoi(match[1:])
+		  if errConv != nil {
+			  //<<Error of type conversion>>
+		  }
+		  shift = s
+	  }
+	  *header = re.ReplaceAllString(*header, "")
+	  subject.contigShifts[*header] = shift
+	  return err
+  }
+
+#+end_src
+#+begin_export latex
+We import \ty{regexp} and \ty{strconv}.
+#+end_export
+#+begin_src go <<Imports>>=
+  "regexp"
+  "strconv"
+#+end_src
+#+begin_export latex
+We check whether the header or the subject are \ty{nil}. If so,
+we create the corresponding error message and return early.
+#+end_export
+#+begin_src go <<Are the inputs \ty{nil}?>>=
+  if header == nil {
+	  err = fmt.Errorf("chr.Intersect: failed " +
+		  "extractShiftField(): header is nil\n")
+	  return err
+  }
+  if subject == nil {
+	  err = fmt.Errorf("chr.Intersect: failed " +
+		  "extractShiftField(): subject is nil\n")
+	  return err
+  }
+#+end_src
+#+begin_export latex
+We create an error message for an empty match.
+#+end_export
+#+begin_src go <<Error of matching>>=
+  err = fmt.Errorf(
+	  "chr.Intersect: error reading " +
+	  "the shift field in the reference " +
+	  "header %v\n", header)
+#+end_src
+#+begin_export latex
+We create an error message for a failed string to integer conversion
+and extend it with the error of the \ty{strconv.Atoi}.
+#+end_export
+#+begin_src go <<Error of type conversion>>=
+  err = fmt.Errorf(
+	  "chr.Intersect: error converting " +
+	  "the shift field into an integer:" +
+	  "\n\t%v\n", errConv)
+#+end_src
+#+begin_export latex
 We traverse the slice of subject sequences, extract their headers and
-data. We append the header to the slice of contig headers. Then we
-append an exclamation mark to the combined subject data and increment
-the total length by one. The new total length gives us the start of
-the contig on the concatenated subject data. We create a \ty{seg} and
-append it to the slice of contig segments. Finally, we append the
-contig's data to the combined subject's data and increment the total
-length.
+data, and initialize a segment describing the current contig. Then we
+check whether \ty{ShiftRefRight} is \ty{true}. If so, we extract the
+shift value from a header. Then we concatenate the current sequence
+and the total subject sequence we have accumulated so far.
 #+end_export
 #+begin_src go <<Concatenate subject's contigs>>=
   for i := 1; i < len(r); i++ {
@@ -447,14 +599,33 @@ length.
 	  seqH := seq.Header()
 	  seqD := seq.Data()
 	  seqL := len(seqD)
-	  contigHeaders = append(contigHeaders, seqH)
-	  subjectData = append(subjectData, '!')
-	  cL += 1
-	  cseg := newSeg(cL, seqL)
-	  contigSegs = append(contigSegs, cseg)
-	  subjectData = append(subjectData, seqD...)
-	  cL += seqL
+	  var cseg seg // initialize a segment
+	  if shiftRefRight {
+		  err := extractShiftField(&seqH, &subject)
+		  if err != nil {
+			  fmt.Fprint(os.Stderr, err)
+			  os.Exit(1)
+		  }
+	  }
+	  //<<Perform the concatenation>>
   }
+#+end_src
+#+begin_export latex
+We append the header to the slice of contig headers. Then we append an
+exclamation mark to the combined subject data and increment the total
+length by one. The new total length us the start of the contig on the
+concatenated subject data. We create a \ty{seg} and append it to the
+slice of contig segments. Finally, we append the contig's data to the
+combined subject's data and increment the total length.
+#+end_export
+#+begin_src go <<Perform the concatenation>>=
+  contigHeaders = append(contigHeaders, seqH)
+  subjectData = append(subjectData, '!')
+  cL += 1
+  cseg = newSeg(cL, seqL)
+  contigSegs = append(contigSegs, cseg)
+  subjectData = append(subjectData, seqD...)
+  cL += seqL
 #+end_src
 #+begin_export latex
 We calculate the GC content of the subject and use it to find the
@@ -1047,8 +1218,8 @@ data, its header, and use them to make a sequence.
 	  segs := h.S
 	  ns := h.N
 	  for _, seg := range segs {
-		  //<<Construct sequence's data>>
-		  //<<Construct sequence's header>>
+		  //<<Construct sequence data>>
+		  //<<Construct sequence header>>
 		  seq := fasta.NewSequence(header, data)
 		  sequences = append(sequences, seq)		
 	  }
@@ -1059,7 +1230,7 @@ data, its header, and use them to make a sequence.
 We get start and end positions of the current segment, initialize a
 slice of bytes, and append bytes to it.
 #+end_export
-#+begin_src go <<Construct sequence's data>>=
+#+begin_src go <<Construct sequence data>>=
   start := seg.s
   end := seg.end()
   data := make([]byte, 0, seg.l)
@@ -1080,23 +1251,25 @@ subject or an \ty{N}.
 #+end_src
 #+begin_export latex
 We construct the sequence's header that contains the orginal contig's
-header \ty{ch}, as well as the start (\ty{cs}) and the end (\ty{ce})
-coordinates on it:
+header \ty{ch}, a tab, and coordianates of the start (\ty{cs}) and the
+end (\ty{ce}):
 \begin{verbatim}
 ch\t(cs..ce)
 \end{verbatim}
-To find those, we call \ty{findSegment}, which we still have to
-implement. We convert zero-based end-exclusive coordinates to
-one-based end-exclusive coordinates if the respective switch is set to
-\ty{true}. If \ty{printSegSitePos} has been switched to \ty{true}, we
-build segsite positions string with the \ty{buildSegSiteStr} function,
-which is yet to be defined. Then we append the string to the header.
+To find \ty{ch}, \ty{cs}, and \ty{ce}, we call \ty{findSegment}, which
+we still have to implement. We convert zero-based end-exclusive
+coordinates to one-based \textit{end-inclusive} coordinates if the
+respective switch is set to \ty{true}. To do this, we add one to the
+start.
+
+If \ty{printSegSitePos} has been switched to \ty{true}, we build
+segsite positions string with the \ty{buildSegSiteStr} function, which
+is yet to be defined. Then we append the string to the header.
 #+end_export
-#+begin_src go <<Construct sequence's header>>=
+#+begin_src go <<Construct sequence header>>=
   ch, cs, ce := findSegment(seg, subject)
   if printOneBased {
 	  cs += 1
-	  ce += 1
   }
   header := fmt.Sprintf("%s\t(%d..%d)", ch, cs, ce)
   if printSegSitePos {
@@ -1112,11 +1285,18 @@ belongs, and returns its header and the coordinates of the segment on
 the contig.
 
 We initialize the output variables and 'unpack' some fields of the
-\ty{subject}. Then we check whether our segment is within some of the
-contigs using the function \ty{isWithin}, which we still need to
-write. If so, we get its header and get the segment's start and end
-coordinates. A segment can be found only once, so we break as soon as
-its contig is identified.
+\ty{subject}. Then we check whether our segment is located within some
+of the contigs using the function \ty{isWithin}, which we still need
+to write. If so, we get its header. Then we get the segment's start
+and shift it using the map of shifts. We remember that we were adding
+one to the intermediate total length of the subject to consider the
+sentinel exclamation marks inserted between the concatenated contigs
+(Section~\ref{Prepare the subject}). Thus, we have to subtract it back
+if we're dealig with any contig starting from the second. Once we have
+the shift value at hand, we can calculate the end. A segment can be
+found only once because the homologs are unique and do not
+overlap. Thus, we break as soon as we've found the contig it belongs
+to.
 #+end_export
 #+begin_src go <<Functions>>=
   func findSegment(seg seg, subject subject) (string, int, int) {
@@ -1124,10 +1304,15 @@ its contig is identified.
 	  var cs, ce int
 	  contigHeaders := subject.contigHeaders
 	  contigSegments := subject.contigSegments
+	  contigShifts := subject.contigShifts
 	  for i, contigSeg := range contigSegments {
 		  if isWithin(seg, contigSeg) {
 			  ch = contigHeaders[i]
-			  cs = seg.s - contigSeg.s
+			  shift := contigShifts[ch]
+			  if i > 0 {
+				  shift -= 1
+			  }
+			  cs = seg.s - contigSeg.s + shift
 			  ce = cs + seg.l
 			  break
 		  }
@@ -1162,12 +1347,7 @@ sequence has the following format:
   func buildSegSiteStr(seg seg, ns map[int]bool,
 	  printOneBased bool) string {
 	  var segSiteStr string
-	  if len(ns) == 0 {
-		  segSiteStr = "0"
-	  } else {
-		  segSiteStr += fmt.Sprintf("%d", len(ns))
-		  //<<Add segsites found within the \ty{seg}>>
-	  }
+	  //<<Add segsites found within the \ty{seg}>>
 	  return segSiteStr
   }
 #+end_src
@@ -1178,7 +1358,8 @@ We extract the relevant positions and store them in the slice
 #+begin_src go <<Add segsites found within the \ty{seg}>>=
   var k []int
   //<<Extract relevant positions>>
-  for i := 1; i < len(k); i++ {
+  segSiteStr += fmt.Sprintf("%d", len(k))
+  for i := 0; i < len(k); i++ {
 	  //<<Append a segsite>>
   }
 #+end_src

@@ -7,7 +7,9 @@ import (
 	"github.com/ivantsers/fasta"
 	"math"
 	"os"
+	"regexp"
 	"sort"
+	"strconv"
 )
 
 // Data structure Homologs describes homologous regions of a subject found in queries. This data type contains a slice of segments of the subject S and a map of segregating sites N.
@@ -26,6 +28,7 @@ type subject struct {
 	a              int
 	contigHeaders  []string
 	contigSegments []seg
+	contigShifts   map[string]int
 }
 type query struct {
 	seq    []byte
@@ -40,9 +43,10 @@ type match struct {
 	endQ   int
 }
 
-// Fields of this data structure contain parameters used to call Intersect(). The parameters include:  1) a reference; 2) path to the directory of target genomes minus the reference; 3) threshold, the minimum fraction of intersecting genomes; 4) p-value of the shustring length (needed for sus.Quantile); 5) a switch to clean* subject sequence; 6) a switch to clean* query sequences; 7) a switch to print positions of segregating sites in output headers; 8) a switch to print N at the positions of mismatches; 8) a switch to print one-based coordinates. *To clean a sequence is to remove non-ATGC nucleotides.
+// Fields of this data structure contain parameters used to call Intersect(). The parameters include:  1) a reference; 2) a switch to shift reference contig start coordinates to the rigth; 3) path to the directory of target genomes minus the reference; 4) threshold, the minimum fraction of intersecting genomes; 5) p-value of the shustring length (needed for sus.Quantile); 6) a switch to clean* subject sequence; 7) a switch to clean* query sequences; 8) a switch to print positions of segregating sites in output headers; 9) a switch to print N at the positions of mismatches; 8) a switch to print one-based coordinates. *To clean a sequence is to remove non-ATGC nucleotides.
 type Parameters struct {
 	Reference       []*fasta.Sequence
+	ShiftRefRight   bool
 	TargetDir       string
 	Threshold       float64
 	ShustrPval      float64
@@ -140,14 +144,23 @@ func Intersect(parameters Parameters) []*fasta.Sequence {
 		return r
 	} else {
 		var subject subject
+		subject.contigShifts = make(map[string]int)
 		for i, _ := range r {
 			if parameters.CleanSubject {
 				r[i].Clean()
 			}
 			r[i].DataToUpper()
 		}
+		shiftRefRight := parameters.ShiftRefRight
 		subjectHeader := r[0].Header()
 		subjectData := r[0].Data()
+		if shiftRefRight {
+			err := extractShiftField(&subjectHeader, &subject)
+			if err != nil {
+				fmt.Fprint(os.Stderr, err)
+				os.Exit(1)
+			}
+		}
 		contigHeaders := []string{subjectHeader}
 		contigSegs := []seg{newSeg(0, len(subjectData))}
 		cL := len(subjectData)
@@ -157,10 +170,18 @@ func Intersect(parameters Parameters) []*fasta.Sequence {
 				seqH := seq.Header()
 				seqD := seq.Data()
 				seqL := len(seqD)
+				var cseg seg // initialize a segment
+				if shiftRefRight {
+					err := extractShiftField(&seqH, &subject)
+					if err != nil {
+						fmt.Fprint(os.Stderr, err)
+						os.Exit(1)
+					}
+				}
 				contigHeaders = append(contigHeaders, seqH)
 				subjectData = append(subjectData, '!')
 				cL += 1
-				cseg := newSeg(cL, seqL)
+				cseg = newSeg(cL, seqL)
 				contigSegs = append(contigSegs, cseg)
 				subjectData = append(subjectData, seqD...)
 				cL += seqL
@@ -230,6 +251,41 @@ func Intersect(parameters Parameters) []*fasta.Sequence {
 		return result
 	}
 }
+func extractShiftField(header *string, subject *subject) error {
+	var err error
+	if header == nil {
+		err = fmt.Errorf("chr.Intersect: failed " +
+			"extractShiftField(): header is nil\n")
+		return err
+	}
+	if subject == nil {
+		err = fmt.Errorf("chr.Intersect: failed " +
+			"extractShiftField(): subject is nil\n")
+		return err
+	}
+	shift := 0
+	re := regexp.MustCompile(`\$\d+`)
+	match := re.FindString(*header)
+	if match == "" {
+		err = fmt.Errorf(
+			"chr.Intersect: error reading "+
+				"the shift field in the reference "+
+				"header %v\n", header)
+	} else {
+		s, errConv := strconv.Atoi(match[1:])
+		if errConv != nil {
+			err = fmt.Errorf(
+				"chr.Intersect: error converting "+
+					"the shift field into an integer:"+
+					"\n\t%v\n", errConv)
+		}
+		shift = s
+	}
+	*header = re.ReplaceAllString(*header, "")
+	subject.contigShifts[*header] = shift
+	return err
+}
+
 func findHomologs(query query, subject subject) Homologs {
 	h := Homologs{S: []seg{}, N: make(map[int]bool)}
 	var qc, qp int
@@ -400,7 +456,6 @@ func homologsToFasta(h Homologs, subject subject,
 		ch, cs, ce := findSegment(seg, subject)
 		if printOneBased {
 			cs += 1
-			ce += 1
 		}
 		header := fmt.Sprintf("%s\t(%d..%d)", ch, cs, ce)
 		if printSegSitePos {
@@ -417,10 +472,15 @@ func findSegment(seg seg, subject subject) (string, int, int) {
 	var cs, ce int
 	contigHeaders := subject.contigHeaders
 	contigSegments := subject.contigSegments
+	contigShifts := subject.contigShifts
 	for i, contigSeg := range contigSegments {
 		if isWithin(seg, contigSeg) {
 			ch = contigHeaders[i]
-			cs = seg.s - contigSeg.s
+			shift := contigShifts[ch]
+			if i > 0 {
+				shift -= 1
+			}
+			cs = seg.s - contigSeg.s + shift
 			ce = cs + seg.l
 			break
 		}
@@ -433,23 +493,19 @@ func isWithin(in seg, out seg) bool {
 func buildSegSiteStr(seg seg, ns map[int]bool,
 	printOneBased bool) string {
 	var segSiteStr string
-	if len(ns) == 0 {
-		segSiteStr = "0"
-	} else {
-		segSiteStr += fmt.Sprintf("%d", len(ns))
-		var k []int
-		for i := seg.s; i < seg.end(); i++ {
-			if ns[i] {
-				k = append(k, i-seg.s)
-			}
+	var k []int
+	for i := seg.s; i < seg.end(); i++ {
+		if ns[i] {
+			k = append(k, i-seg.s)
 		}
-		for i := 1; i < len(k); i++ {
-			coord := k[i]
-			if printOneBased {
-				coord = k[i] + 1
-			}
-			segSiteStr += fmt.Sprintf(" %d", coord)
+	}
+	segSiteStr += fmt.Sprintf("%d", len(k))
+	for i := 0; i < len(k); i++ {
+		coord := k[i]
+		if printOneBased {
+			coord = k[i] + 1
 		}
+		segSiteStr += fmt.Sprintf(" %d", coord)
 	}
 	return segSiteStr
 }
