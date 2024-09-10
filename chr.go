@@ -202,11 +202,12 @@ func Intersect(parameters Parameters) []*fasta.Sequence {
 		minAncLen := sus.Quantile(cL, gcContent, pval)
 		rev := fasta.NewSequence("reverse", subjectData)
 		rev.ReverseComplement()
+		subjectData = append(subjectData, '#')
 		subjectData = append(subjectData, rev.Data()...)
 		sa := esa.MakeEsa(subjectData)
 		subject.esa = sa
 		subject.totalL = len(subjectData)
-		subject.strandL = len(subjectData) / 2
+		subject.strandL = subject.totalL / 2
 		subject.a = minAncLen
 		subject.contigHeaders = contigHeaders
 		subject.contigSegments = contigSegs
@@ -322,8 +323,7 @@ func findHomologs(query query, subject subject) Homologs {
 			} else {
 				if rightAnchor || p.l/2 >= subject.a {
 					if seg.s > subject.strandL {
-						seg.s = subject.totalL + 1 - seg.s - seg.l
-
+						seg.s = subject.totalL - seg.s - seg.l
 					}
 					h.S = append(h.S, seg)
 				}
@@ -340,8 +340,7 @@ func findHomologs(query query, subject subject) Homologs {
 	//Close the last segment if open:
 	if rightAnchor || p.l/2 >= subject.a {
 		if seg.s > subject.strandL {
-			seg.s = subject.totalL + 1 - seg.s - seg.l
-
+			seg.s = subject.totalL - seg.s - seg.l
 		}
 		h.S = append(h.S, seg)
 	}

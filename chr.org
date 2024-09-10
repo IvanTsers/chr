@@ -655,12 +655,14 @@ We import \ty{sus}.
   "github.com/evolbioinf/sus"
 #+end_src
 #+begin_export latex
-We calculate the reverse strand, append it to the subject, and build
-an ESA.
+We calculate the reverse strand and append it to the subject. We
+separate the strands with a sentinel character \ty{\#}. Then we use the
+two-stranded subject to build an ESA.
 #+end_export
 #+begin_src go <<Build subject's ESA>>=
   rev := fasta.NewSequence("reverse", subjectData)
   rev.ReverseComplement()
+  subjectData = append(subjectData, '#')
   subjectData = append(subjectData, rev.Data()...)
   sa := esa.MakeEsa(subjectData)
 #+end_src
@@ -670,7 +672,7 @@ We populate the \ty{subject} struct with the calculated values.
 #+begin_src go <<Populate \ty{subject}>>=
   subject.esa = sa
   subject.totalL = len(subjectData)
-  subject.strandL = len(subjectData)/2
+  subject.strandL = subject.totalL / 2
   subject.a = minAncLen
   subject.contigHeaders = contigHeaders
   subject.contigSegments = contigSegs
@@ -958,8 +960,7 @@ To close the current segment is to project it onto the forward strand
 #+end_export
 #+begin_src go <<Close current segment>>=
   if seg.s > subject.strandL {
-	  seg.s = subject.totalL + 1 - seg.s - seg.l
-
+	  seg.s = subject.totalL - seg.s - seg.l
   }
   h.S = append(h.S, seg)
 #+end_src
