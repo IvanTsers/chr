@@ -121,22 +121,22 @@ We import \ty{reflect}.
   "reflect"
 #+end_src
 #+begin_export latex
-\subsection{\ty{Homologs.reduceOverlaps}}
-We create a number of segments to test the method \ty{reduceOverlaps},
+\subsection{\ty{Homologs.filterOverlaps}}
+We create a number of segments to test the method \ty{filterOverlaps},
 create a struct of test cases, and tun the tests.
 #+end_export
 #+begin_src go <<Testing functions>>=
-  func TestReduceOverlaps(t *testing.T) {
+  func TestFilterOverlaps(t *testing.T) {
 	  //<<Declare test segments>>
 	  testCases := []struct {
 		  name string
 		  input []seg
 		  want []seg
 	  }{
-		  //<<Test cases for TestReduceOverlaps>>
+		  //<<Test cases for TestFilterOverlaps>>
 	  }
 		  for _, tc := range testCases {
-			  //<<Run TestReduceOverlaps test case>>
+			  //<<Run TestFilterOverlaps test case>>
 		  }
   }
 #+end_src
@@ -168,7 +168,7 @@ We describe the test cases:
 \item a set of sorted ten homologs combining the prevous three cases.
 \end{itemize}
 #+end_export
-#+begin_src go <<Test cases for TestReduceOverlaps>>=
+#+begin_src go <<Test cases for TestFilterOverlaps>>=
   {"Empty", []seg{}, []seg{}},
   {"Sinlge", []seg{x}, []seg{x}},
   {"No overlap", []seg{x, f}, []seg{x, f}},
@@ -181,10 +181,10 @@ We describe the test cases:
 #+begin_export latex
 We run the tests and compare the actual output to the expected values.
 #+end_export
-#+begin_src go <<Run TestReduceOverlaps test case>>=
+#+begin_src go <<Run TestFilterOverlaps test case>>=
   t.Run(tc.name, func(t *testing.T) {
 	  h := Homologs{S: tc.input, N: make(map[int]bool)}
-	  h.reduceOverlaps()
+	  h.filterOverlaps()
 	  get := h.S
 	  if !reflect.DeepEqual(get, tc.want) {
 		  t.Errorf("\nwant:\n%v\nget:\n%v\n",
@@ -444,7 +444,7 @@ from it, and concatenate and clean them. Then we set the values of the
 #+end_src
 #+begin_export latex
 For each test case we prepare the subject and the query, find
-homologs, sort them, and reduce overlaps. Then we convert \ty{seg}
+homologs, sort them, and filter overlaps. Then we convert \ty{seg}
 slices into actual \ty{fasta} sequences and compare them to those
 produced by \ty{phylonium} on the same input.
 #+end_export
@@ -453,7 +453,7 @@ produced by \ty{phylonium} on the same input.
 	  subject := prepareSubject("data/s/" + tc.input)
 	  query := prepareQuery("data/q/" + tc.input)
 	  h := findHomologs(query, subject)
-	  h.reduceOverlaps()
+	  h.filterOverlaps()
 	  get := homologsToFasta(h, subject, false, true, true)
 	  for i, g := range get {
 		  fmt.Fprintln(os.Stderr, g.Header())
@@ -475,7 +475,7 @@ we import \ty{fmt}.
 #+begin_export latex
 We have just also tested the function \ty{homologsToFasta} and the
 integration between \ty{findHomologs}, \ty{sort}, and
-\ty{reduceOverlaps}.
+\ty{filterOverlaps}.
 #+end_export
 #+begin_export latex
 \subsection{\ty{pileToSeg and pileHeigths}}

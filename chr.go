@@ -7,9 +7,9 @@ import (
 	"github.com/ivantsers/fasta"
 	"math"
 	"os"
-	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 )
 
 // Data structure Homologs describes homologous regions of a subject found in queries. This data type contains a slice of segments of the subject S and a map of segregating sites N.
@@ -20,6 +20,7 @@ type Homologs struct {
 type seg struct {
 	s int
 	l int
+	n map[int]bool
 }
 type subject struct {
 	esa            *esa.Esa
@@ -43,7 +44,7 @@ type match struct {
 	endQ   int
 }
 
-// Fields of this data structure contain parameters used to call Intersect(). The parameters include:  1) a reference; 2) a switch to shift reference contig start coordinates to the rigth; 3) path to the directory of target genomes minus the reference; 4) threshold, the minimum fraction of intersecting genomes; 5) p-value of the shustring length (needed for sus.Quantile); 6) a switch to clean* subject sequence; 7) a switch to clean* query sequences; 8) a switch to print positions of segregating sites in output headers; 9) a switch to print N at the positions of mismatches; 8) a switch to print one-based coordinates. *To clean a sequence is to remove non-ATGC nucleotides.
+// Fields of this data structure contain parameters used to call Intersect(). The parameters include:  1) a reference; 2) a switch to shift reference contig start coordinates to the rigth; 3) path to the directory of target genomes minus the reference; 4) threshold, the minimum fraction of intersecting genomes; 5) p-value of the shustring length (needed for sus.Quantile); 6) a switch to clean* subject sequence; 7) a switch to clean* query sequences; 8) a switch to print positions of segregating sites in output headers; 9) a switch to print N at the positions of mismatches; 10) a switch to print one-based coordinates. *To clean a sequence is to remove non-ATGC nucleotides.
 type Parameters struct {
 	Reference       []*fasta.Sequence
 	ShiftRefRight   bool
@@ -57,7 +58,7 @@ type Parameters struct {
 	PrintOneBased   bool
 }
 
-func (h *Homologs) reduceOverlaps() {
+func (h *Homologs) filterOverlaps() {
 	slen := len(h.S)
 	if slen < 2 {
 		return
@@ -227,9 +228,7 @@ func Intersect(parameters Parameters) []*fasta.Sequence {
 			query.l = qSeq.Length()
 			h := findHomologs(query, subject)
 			homologs.S = append(homologs.S, h.S...)
-			for pos, _ := range h.N {
-				homologs.N[pos] = true
-			}
+			homologs.N = appendKeys(homologs.N, h.N)
 		}
 		f := parameters.Threshold
 		g := numFiles
@@ -256,34 +255,34 @@ func extractShiftField(header *string, subject *subject) error {
 	var err error
 	if header == nil {
 		err = fmt.Errorf("chr.Intersect: failed " +
-			"extractShiftField(): header is nil\n")
+			"extractShiftField: header is nil\n")
 		return err
 	}
 	if subject == nil {
 		err = fmt.Errorf("chr.Intersect: failed " +
-			"extractShiftField(): subject is nil\n")
+			"extractShiftField: subject is nil\n")
 		return err
 	}
-	shift := 0
-	re := regexp.MustCompile(`\$\d+`)
-	match := re.FindString(*header)
-	if match == "" {
+	headerFields := strings.Split(*header, "$")
+
+	if len(headerFields) < 2 || headerFields[1] == "" {
 		err = fmt.Errorf(
 			"chr.Intersect: error reading "+
 				"the shift field in the reference "+
 				"header %v\n", header)
-	} else {
-		s, errConv := strconv.Atoi(match[1:])
-		if errConv != nil {
-			err = fmt.Errorf(
-				"chr.Intersect: error converting "+
-					"the shift field into an integer:"+
-					"\n\t%v\n", errConv)
-		}
-		shift = s
 	}
-	*header = re.ReplaceAllString(*header, "")
+
+	shift, errConv := strconv.Atoi(headerFields[1])
+	if errConv != nil {
+		err = fmt.Errorf(
+			"chr.Intersect: error converting "+
+				"the shift field into an integer:"+
+				"\n\t%v\n", errConv)
+	}
+
+	*header = headerFields[0]
 	subject.contigShifts[*header] = shift
+
 	return err
 }
 
@@ -315,8 +314,16 @@ func findHomologs(query query, subject subject) Homologs {
 				gapSeqSubject := subject.esa.T[prevSegEnd : prevSegEnd+gapLen]
 				gapSeqQuery := query.seq[p.endQ : p.endQ+gapLen]
 				for i := 0; i < gapLen; i++ {
-					if gapSeqSubject[i] != gapSeqQuery[i] {
-						h.N[prevSegEnd+i] = true
+					isSegsite := compare(gapSeqSubject[i], gapSeqQuery[i])
+					ssPos := -1
+					if isSegsite {
+						if prevSegEnd > subject.strandL {
+							ssPos = subject.totalL - prevSegEnd - i - 1
+							seg.n[ssPos] = true
+						} else {
+							ssPos = prevSegEnd + i
+							seg.n[ssPos] = true
+						}
 					}
 				}
 				rightAnchor = true
@@ -329,6 +336,7 @@ func findHomologs(query query, subject subject) Homologs {
 				}
 				seg.s = c.startS
 				seg.l = c.l
+				seg.n = make(map[int]bool)
 				rightAnchor = false
 			}
 			qp = qc
@@ -344,7 +352,10 @@ func findHomologs(query query, subject subject) Homologs {
 		}
 		h.S = append(h.S, seg)
 	}
-	h.reduceOverlaps()
+	h.filterOverlaps()
+	for _, seg := range h.S {
+		h.N = appendKeys(h.N, seg.n)
+	}
 	return h
 }
 func lcpAnchor(c *match, p *match,
@@ -379,6 +390,19 @@ func esaAnchor(c *match, query query, subject subject) bool {
 	c.l = newL
 	lu := (mc.J == mc.I) && (newL >= subject.a)
 	return lu
+}
+func compare(s byte, q byte) bool {
+	notEqual := true
+	if s == q {
+		notEqual = false
+	}
+	return notEqual
+}
+func appendKeys(a map[int]bool, b map[int]bool) map[int]bool {
+	for key, _ := range b {
+		a[key] = true
+	}
+	return a
 }
 func pileHeights(h Homologs, strandL int) []int {
 	pile := make([]int, strandL)

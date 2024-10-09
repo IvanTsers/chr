@@ -46,10 +46,9 @@ We import \ty{sort}.
   "sort"
 #+end_src
 #+begin_export latex
-\subsubsection{Method \ty{reduceOverlaps}}
-This method reduces a slice of overlapping homologous regions,
-\ty{Homologs.S}, to a slice of non-overlapping homologous regions of
-the longest total length.
+\subsubsection{Method \ty{filterOverlaps}}
+The method \ty{filterOverlaps} removes overlapping homologous regions
+to create the longest possible chain of non-overlapping regions.
 
 If slice \ty{Homologs.S} does not contain at least two elements, we
 return early. If it does, we sort it and reduce overlapping stacks of
@@ -61,7 +60,7 @@ calculate chain scores, find links of the longest chain through
 backtracking, and return the chain.
 #+end_export
 #+begin_src go <<Methods>>=
-  func (h *Homologs) reduceOverlaps() {
+  func (h *Homologs) filterOverlaps() {
 	  slen := len(h.S)
 	  if slen < 2 {
 		  return
@@ -155,8 +154,10 @@ input slice of integers.
   }
 #+end_src
 #+begin_export latex
-We extract only visited elements from \ty{segs} and set the new value of
-\ty{h.S}.
+We extract only visited elements from \ty{segs} and set the new value
+of \ty{h.S}. We also reset the segregating site map if the related
+segment was not visited to avoid reporting phantom mutations. We
+finish this block with updating the fields of the homolog \ty{h}.
 #+end_export
 #+begin_src go <<Return the chain>>=
   var segred []seg
@@ -171,12 +172,15 @@ We extract only visited elements from \ty{segs} and set the new value of
 \subsection{Data structure \ty{seg}} \label{Data structure seg}
 We declare a custom data struct \ty{seg} to store segments of the
 forward strand of the subject. A \ty{seg} contains a zero-based start
-and length of a region of a subject sequence.
+of a region of a subject sequence, its length, and a map \ty{n} to
+store coordinates of segregating sites (on the subject) related to
+this segment.
 #+end_export
 #+begin_src go <<Data structures>>=
   type seg struct {
 	  s int
 	  l int
+	  n map[int]bool
   }
 #+end_src
 #+begin_export latex
@@ -297,7 +301,7 @@ contains:
 !7) a switch to clean* query sequences;
 !8) a switch to print positions of segregating sites in output headers;
 !9) a switch to print \ty{N} at the positions of mismatches;
-!8) a switch to print one-based coordinates.
+!10) a switch to print one-based coordinates.
 !*To clean a sequence is to remove non-ATGC nucleotides.
 
 \ty{Intersect} is defined in Section~\ref{Intersect}.
@@ -390,7 +394,7 @@ coordinate. Thus, \textbf{if you plan to use \ty{Intersect} on a
 !(reference) and query sequences.
 
 The data structure \ty{Parameters} is defined in Section~\ref{Data
-  structure Parameters}. We "unpack" some fields of the
+  structure Parameters}. We 'unpack' some fields of the
 \ty{Parameters} to make short aliases and set default values for some
 fields. Then we count files in the specified target directory. If
 there are none, we don't have the material to intersect with, thus we
@@ -510,11 +514,10 @@ all contigs into one sequence.
 #+end_src
 #+begin_export latex
 \subsubsection{Read the reference contig shift}
-The function \ty{extractShiftField} accepts pointers to a header
-and the \ty{subject} struct. It is supposed to update the
-\ty{subject.contigShifts} map if the input header contains the shift
-field \ty{\$x} (Section~\ref{Shifts}). The function's only return is
-an error.
+The function \ty{extractShiftField} accepts pointers to a header and
+the \ty{subject} struct. It updates the \ty{subject.contigShifts} map
+if the input header contains the shift field \ty{\$x}
+(Section~\ref{Shifts}). The function's only return is an error.
 
 We initialize an error, then check whether our input variables are
 \ty{nil}. Then we create a regular expression, parse the header, and
@@ -526,29 +529,29 @@ shifts map of the \ty{subject} struct.
   func extractShiftField(header *string, subject *subject) error {
 	  var err error
 	  //<<Are the inputs \ty{nil}?>>
-	  shift := 0
-	  re := regexp.MustCompile(`\$\d+`)
-	  match := re.FindString(*header)
-	  if match == "" {
-		  //<<Error of matching>>
-	  } else {
-		  s, errConv := strconv.Atoi(match[1:])
-		  if errConv != nil {
-			  //<<Error of type conversion>>
-		  }
-		  shift = s
+	  headerFields := strings.Split(*header, "$")
+
+	  if len(headerFields) < 2 || headerFields[1] == "" {
+		  //<<Error of splitting>>
 	  }
-	  *header = re.ReplaceAllString(*header, "")
+  
+	  shift, errConv := strconv.Atoi(headerFields[1])
+	  if errConv != nil {
+		  //<<Error of type conversion>>
+	  }
+
+	  *header = headerFields[0]
 	  subject.contigShifts[*header] = shift
+
 	  return err
   }
 
 #+end_src
 #+begin_export latex
-We import \ty{regexp} and \ty{strconv}.
+We import \ty{strings} and \ty{strconv}.
 #+end_export
 #+begin_src go <<Imports>>=
-  "regexp"
+  "strings"
   "strconv"
 #+end_src
 #+begin_export latex
@@ -558,19 +561,19 @@ we create the corresponding error message and return early.
 #+begin_src go <<Are the inputs \ty{nil}?>>=
   if header == nil {
 	  err = fmt.Errorf("chr.Intersect: failed " +
-		  "extractShiftField(): header is nil\n")
+		  "extractShiftField: header is nil\n")
 	  return err
   }
   if subject == nil {
 	  err = fmt.Errorf("chr.Intersect: failed " +
-		  "extractShiftField(): subject is nil\n")
+		  "extractShiftField: subject is nil\n")
 	  return err
   }
 #+end_src
 #+begin_export latex
-We create an error message for an empty match.
+We create an error message for a failed field splitting.
 #+end_export
-#+begin_src go <<Error of matching>>=
+#+begin_src go <<Error of splitting>>=
   err = fmt.Errorf(
 	  "chr.Intersect: error reading " +
 	  "the shift field in the reference " +
@@ -679,10 +682,23 @@ We populate the \ty{subject} struct with the calculated values.
 #+end_src
 #+begin_export latex
 \subsubsection{Find homologous regions}
-We initialize a variable of type \ty{Homologs} to store found
-homologous regions. We iterate over the files, prepare \ty{queries},
-and call the \ty{findHomologs} function, which we still have to
-write. We append the output of this function to the \ty{Homologs}.
+We initialize a slice of segments to store found homologous
+regions. We iterate over the files, prepare \ty{queries}, and call the
+\ty{findHomologs} function, which we still have to write. We append
+the output of this function to the \ty{homologs} slice we have just
+initialized (Figure~\ref{fig:findHomologs}).
+
+\begin{figure}[H]
+    \includegraphics[width=0.9\linewidth]{figFindHomologs.eps}
+    \caption{Data flow during the search for homologous regions in
+      queries. The \ty{findHomologs} function identifies exact matches
+      in a query, selects those that meet anchor criteria, and uses
+      these anchors to build segments, which are then filtered for
+      overlaps. This process is repeated for each query, and the
+      filtered homologs are added to a common slice that holds all
+      homologies.}
+    \label{fig:findHomologs}
+\end{figure}
 #+end_export
 #+begin_src go <<Find homologous regions>>=
   homologs := Homologs{S: []seg{}, N: make(map[int]bool)}
@@ -690,9 +706,7 @@ write. We append the output of this function to the \ty{Homologs}.
 	  //<<Prepare a \ty{query}>>
 	  h := findHomologs(query, subject)
 	  homologs.S = append(homologs.S, h.S...)
-	  for pos, _ := range h.N {
-		  homologs.N[pos] = true
-	  }
+	  homologs.N = appendKeys(homologs.N, h.N)
   }
 #+end_src
 #+begin_export latex
@@ -718,19 +732,27 @@ and \ty{l} fields.
 #+end_src
 #+begin_export latex
 The function \ty{findHomologs} accepts structs of \ty{subject} and
-\ty{query}. The function returns a \ty{Homologs} struct.
+\ty{query}. The function finds homologous regions based on exact
+matches between the \ty{subject} and the \ty{query}. The function
+returns a \ty{Homologs} struct.
 
-We initialize variables to operate with during the search for
-homologs, conduct the search, reduce overlaps, and return the
-results. If no homologs were found, we return an empty \ty{Homologs}
-slice, which is still a valid result.
+We initialize variables to operate with during the search for homologs
+and conduct the anchor search. Then we filter overlaps and update the
+map of segregating sites \ty{h.N} with the segregating sites from the
+filtered homologous segments. We do this with help of the function
+\ty{appendKeys}, which we will define later. Finally, we return the
+results of the search. If no homologs were found, we return an empty
+\ty{Homologs} slice, which is still a valid result.
 #+end_export
 #+begin_src go <<Functions>>=
   func findHomologs(query query, subject subject) Homologs { 
 	  h := Homologs{S: []seg{}, N: make(map[int]bool)}
 	  //<<Initialize the search for homologs>>
 	  //<<Anchor search>>
-	  h.reduceOverlaps()
+	  h.filterOverlaps()
+	  for _, seg := range h.S {
+		  h.N = appendKeys(h.N, seg.n)
+	  }
 	  return h
   }
 #+end_src
@@ -741,6 +763,7 @@ We declare variables to operate with during the search. These are:
   \item current and previous positions in the query;
   \item current and previous \ty{matches}:
   \item a \ty{segment};
+  \item a map of segregating sites found within a suffix of the query;
   \item an indicator as to whether the right anchor exists;
 \end{itemize}
 #+end_export
@@ -753,10 +776,18 @@ We declare variables to operate with during the search. These are:
 #+begin_export latex
 We perform the anchor search in a suffix of our query. We update the
 \ty{suffix} field of the \ty{query} with a suffix starting at the
-current position and ends at the last byte of the query sequence. Then
-we search for an anchor. There are two scenarios: 1) there is a match
-that starts right after the last mismatch, 2) there is a distant match
-somewhere else in the ESA. There are two functions to be written.
+current position and ends at the last byte of the query sequence. We
+clear the map \ty{segN}, in which we keep segregating sites found in
+the current suffix. This map serves as a "buffer" separating the
+results of segregation site calling in the current suffix from
+\ty{h.N} (Figure~\ref{fig:FHlogic}).
+
+
+
+Then we search for an anchor. There are two scenarios: 1) there is a
+match that starts right after the last mismatch, 2) there is a distant
+match somewhere else in the ESA. There are two functions to be
+written.
 
 In the first case, we try to find the longest common prefix (LCP) at
 the given positions in query and subject sequences using the function
@@ -844,7 +875,7 @@ significant, and the function returns \ty{true}.
 	  }
 	  c.startS = tryS
 	  newL := lcp(query.l, query.suffix, subject.esa.T[tryS:])
-	  c.l = newL	
+	  c.l = newL
 	  return newL >= subject.a
   }
 #+end_src
@@ -930,33 +961,58 @@ extendible.
 We extend the segment to the end of the new anchor. We calculate the
 length of the inter-anchor gap. Then we extend the current segment
 with this gap length and the length of the current match. After the
-extension, we add new positions to the map of mismatches \ty{h.N} as
-keys. We also remember that we have just found a new right anchor.
+extension, we add new positions to the map of mismatches \ty{segN}
+as keys. We also remember that we have just found a new right anchor.
 #+end_export
 #+begin_src go <<Extend current segment>>=
   prevSegEnd := seg.end()
   gapLen := qc - p.endQ
   seg.l = seg.l + gapLen + c.l
-  //<<Add positions to \ty{h.N}>>
+  //<<Add positions to \ty{seg.n}>>
   rightAnchor = true
 #+end_src
 #+begin_export latex
 We extract sequences located between the current pair of anchors from
-the subject and the query. Then we compare each nucleotide and save
-the mismatches' positions to the map \ty{h.N}.
+the subject and the query. Then we compare each nucleotide using the
+function \ty{compare}, which we will define shortly. We save the
+mismatches' positions to the map \ty{seg.n}. If mismatches are found
+on the reverse strand, we project their coordinates onto the forward
+strand.
 #+end_export
-#+begin_src go <<Add positions to \ty{h.N}>>=
+#+begin_src go <<Add positions to \ty{seg.n}>>=
   gapSeqSubject := subject.esa.T[prevSegEnd:prevSegEnd + gapLen]
   gapSeqQuery := query.seq[p.endQ:p.endQ + gapLen]
   for i := 0; i < gapLen; i++ {
-	  if gapSeqSubject[i] != gapSeqQuery[i] {
-		  h.N[prevSegEnd + i] = true
+	  isSegsite := compare(gapSeqSubject[i], gapSeqQuery[i])
+	  ssPos := -1
+	  if isSegsite {
+		  if prevSegEnd > subject.strandL {
+			  ssPos = subject.totalL - prevSegEnd - i - 1 
+			  seg.n[ssPos] = true
+		  } else {
+			  ssPos = prevSegEnd + i
+			  seg.n[ssPos] = true
+		  }
 	  }
   }
 #+end_src
 #+begin_export latex
+The function \ty{compare} compares two bytes and returns \ty{true} if
+they are not equal.
+#+end_export
+#+begin_src go <<Functions>>=
+  func compare(s byte, q byte) bool {
+	  notEqual := true
+	  if s == q {
+		  notEqual = false
+	  }
+	  return notEqual
+  }
+#+end_src
+#+begin_export latex
 To close the current segment is to project it onto the forward strand
-(if necessary) and append it to the slice of homologies..
+(if necessary) and append it to the slice of homologies. We apply the
+filter for the maximum fraction of mismatches.
 #+end_export
 #+begin_src go <<Close current segment>>=
   if seg.s > subject.strandL {
@@ -965,12 +1021,13 @@ To close the current segment is to project it onto the forward strand
   h.S = append(h.S, seg)
 #+end_src
 #+begin_export latex
-To open a segment is to declare its start and length, and forget that
-the right anchor was found.
+To open a segment is to declare its start and length, reset the
+segregating site map, and forget that the right anchor was found.
 #+end_export
 #+begin_src go <<Open a new segment>>=
   seg.s = c.startS
   seg.l = c.l
+  seg.n = make(map[int]bool)
   rightAnchor = false
 #+end_src
 #+begin_export latex
@@ -980,6 +1037,20 @@ We update the previous position in the query and the previous match.
   qp = qc
   p.l = c.l
   p.startS = c.startS
+#+end_src
+#+begin_export latex
+The last thing we do before \ty{return} is updating \ty{h.N} using the
+function \ty{appendKeys} in a loop. The function appends \ty{int} keys
+from the map \ty{b} to the map \ty{a}. Both maps hold values of type
+\ty{bool}.
+#+end_export
+#+begin_src go <<Functions>>=
+  func appendKeys(a map[int]bool, b map[int]bool) map[int]bool {
+	  for key, _ := range(b) {
+		  a[key] = true
+	  }
+	  return a
+  }
 #+end_src
 #+begin_export latex
 \subsubsection{Find common homologous regions}

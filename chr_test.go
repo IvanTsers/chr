@@ -133,7 +133,7 @@ func TestSort(t *testing.T) {
 		})
 	}
 }
-func TestReduceOverlaps(t *testing.T) {
+func TestFilterOverlaps(t *testing.T) {
 	x := newSeg(0, 10)
 	y := newSeg(5, 10)
 	z := newSeg(5, 20)
@@ -161,7 +161,7 @@ func TestReduceOverlaps(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			h := Homologs{S: tc.input, N: make(map[int]bool)}
-			h.reduceOverlaps()
+			h.filterOverlaps()
 			get := h.S
 			if !reflect.DeepEqual(get, tc.want) {
 				t.Errorf("\nwant:\n%v\nget:\n%v\n",
@@ -202,7 +202,7 @@ func TestFindHomologs(t *testing.T) {
 			subject := prepareSubject("data/s/" + tc.input)
 			query := prepareQuery("data/q/" + tc.input)
 			h := findHomologs(query, subject)
-			h.reduceOverlaps()
+			h.filterOverlaps()
 			get := homologsToFasta(h, subject, false, true, true)
 			for i, g := range get {
 				fmt.Fprintln(os.Stderr, g.Header())
