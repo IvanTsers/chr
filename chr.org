@@ -782,8 +782,6 @@ the current suffix. This map serves as a "buffer" separating the
 results of segregation site calling in the current suffix from
 \ty{h.N} (Figure~\ref{fig:FHlogic}).
 
-
-
 Then we search for an anchor. There are two scenarios: 1) there is a
 match that starts right after the last mismatch, 2) there is a distant
 match somewhere else in the ESA. There are two functions to be
@@ -874,25 +872,37 @@ significant, and the function returns \ty{true}.
 		  return false
 	  }
 	  c.startS = tryS
-	  newL := lcp(query.l, query.suffix, subject.esa.T[tryS:])
+	  newL := lcpLen(query.l, query.suffix, subject.esa.T[tryS:])
 	  c.l = newL
 	  return newL >= subject.a
   }
 #+end_src
 #+begin_export latex
-The function \ty{lcp} returns the length of the longest common prefix
-of two slices of bytes.
+The function \ty{lcpLen} returns the length of the longest common
+prefix of two slices of bytes. The auxillary function \ty{min} returns
+the smallest of integers.
 #+end_export
 #+begin_src go <<Functions>>=
-  func lcp(max int, a, b []byte) int {
+  func lcpLen(max int, a, b []byte) int {
+      limit := min(len(a), len(b), max)
       count := 0
-      for i := 0; i < max; i++ {
-	  if i >= len(a) || i >= len(b) || a[i] != b[i] {
+      for i := 0; i < limit; i++ {
+	  if a[i] != b[i] {
 	      break
 	  }
 	  count++
       }
       return count
+  }
+
+  func min(vals ...int) int {
+      m := vals[0]
+      for _, v := range vals {
+	  if v < m {
+	      m = v
+	  }
+      }
+      return m
   }
 #+end_src
 #+begin_export latex
@@ -1011,8 +1021,7 @@ they are not equal.
 #+end_src
 #+begin_export latex
 To close the current segment is to project it onto the forward strand
-(if necessary) and append it to the slice of homologies. We apply the
-filter for the maximum fraction of mismatches.
+(if necessary) and append it to the slice of homologies.
 #+end_export
 #+begin_src go <<Close current segment>>=
   if seg.s > subject.strandL {

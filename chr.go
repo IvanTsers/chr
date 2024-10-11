@@ -368,19 +368,30 @@ func lcpAnchor(c *match, p *match,
 		return false
 	}
 	c.startS = tryS
-	newL := lcp(query.l, query.suffix, subject.esa.T[tryS:])
+	newL := lcpLen(query.l, query.suffix, subject.esa.T[tryS:])
 	c.l = newL
 	return newL >= subject.a
 }
-func lcp(max int, a, b []byte) int {
+func lcpLen(max int, a, b []byte) int {
+	limit := min(len(a), len(b), max)
 	count := 0
-	for i := 0; i < max; i++ {
-		if i >= len(a) || i >= len(b) || a[i] != b[i] {
+	for i := 0; i < limit; i++ {
+		if a[i] != b[i] {
 			break
 		}
 		count++
 	}
 	return count
+}
+
+func min(vals ...int) int {
+	m := vals[0]
+	for _, v := range vals {
+		if v < m {
+			m = v
+		}
+	}
+	return m
 }
 func esaAnchor(c *match, query query, subject subject) bool {
 	mc := subject.esa.MatchPref(query.suffix)
