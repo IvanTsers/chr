@@ -770,7 +770,7 @@ We declare variables to operate with during the search. These are:
 #+begin_src go <<Initialize the search for homologs>>=
   var qc, qp int
   var c, p match
-  var seg seg
+  seg := seg{s:0, l:0, n: make(map[int]bool)}
   rightAnchor := false
 #+end_src
 #+begin_export latex

@@ -290,7 +290,7 @@ func findHomologs(query query, subject subject) Homologs {
 	h := Homologs{S: []seg{}, N: make(map[int]bool)}
 	var qc, qp int
 	var c, p match
-	var seg seg
+	seg := seg{s: 0, l: 0, n: make(map[int]bool)}
 	rightAnchor := false
 	for qc < query.l {
 		query.updSuffix(qc)
