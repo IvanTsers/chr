@@ -156,7 +156,7 @@ func Intersect(parameters Parameters) []*fasta.Sequence {
 		subjectHeader := r[0].Header()
 		subjectData := r[0].Data()
 		if shiftRefRight {
-			err := extractShiftField(&subjectHeader, &subject)
+			err := extractShiftField(subjectHeader, &subject)
 			if err != nil {
 				fmt.Fprint(os.Stderr, err)
 				os.Exit(1)
@@ -173,7 +173,7 @@ func Intersect(parameters Parameters) []*fasta.Sequence {
 				seqL := len(seqD)
 				var cseg seg // initialize a segment
 				if shiftRefRight {
-					err := extractShiftField(&seqH, &subject)
+					err := extractShiftField(seqH, &subject)
 					if err != nil {
 						fmt.Fprint(os.Stderr, err)
 						os.Exit(1)
@@ -247,15 +247,15 @@ func Intersect(parameters Parameters) []*fasta.Sequence {
 		printOneBased := parameters.PrintOneBased
 		printSegSitePos := parameters.PrintSegSitePos
 		result := homologsToFasta(homologs, subject, printN,
-			printOneBased, printSegSitePos)
+			printOneBased, printSegSitePos, shiftRefRight)
 		return result
 	}
 }
-func extractShiftField(header *string, subject *subject) error {
+func extractShiftField(header string, subject *subject) error {
 	var err error
-	if header == nil {
+	if header == "" {
 		err = fmt.Errorf("chr.Intersect: failed " +
-			"extractShiftField: header is nil\n")
+			"extractShiftField: header is empty\n")
 		return err
 	}
 	if subject == nil {
@@ -263,25 +263,24 @@ func extractShiftField(header *string, subject *subject) error {
 			"extractShiftField: subject is nil\n")
 		return err
 	}
-	headerFields := strings.Split(*header, "$")
+	headerFields := strings.Split(header, "$")
 
-	if len(headerFields) < 2 || headerFields[1] == "" {
+	if len(headerFields) < 3 || headerFields[1] == "" || headerFields[2] == "" {
 		err = fmt.Errorf(
 			"chr.Intersect: error reading "+
-				"the shift field in the reference "+
+				"shift fields in the reference "+
 				"header %v\n", header)
 	}
 
-	shift, errConv := strconv.Atoi(headerFields[1])
+	shift, errConv := strconv.Atoi(headerFields[2])
 	if errConv != nil {
 		err = fmt.Errorf(
 			"chr.Intersect: error converting "+
-				"the shift field into an integer:"+
+				"a shift field into an integer:"+
 				"\n\t%v\n", errConv)
 	}
 
-	*header = headerFields[0]
-	subject.contigShifts[*header] = shift
+	subject.contigShifts[header] = shift
 
 	return err
 }
@@ -471,8 +470,11 @@ func pileToSeg(p []int, t int, isAdj map[int]bool) []seg {
 	return segs
 }
 func homologsToFasta(h Homologs, subject subject,
-	printN bool, printOneBased bool,
-	printSegSitePos bool) []*fasta.Sequence {
+	printN bool,
+	printOneBased bool,
+	printSegSitePos bool,
+	shiftRefRight bool) []*fasta.Sequence {
+
 	var sequences []*fasta.Sequence
 	segs := h.S
 	ns := h.N
@@ -487,11 +489,11 @@ func homologsToFasta(h Homologs, subject subject,
 				data = append(data, subject.esa.T[j])
 			}
 		}
-		ch, cs, ce := findSegment(seg, subject)
+		ch, cs, ce := findSegment(seg, subject, shiftRefRight)
 		if printOneBased {
 			cs += 1
 		}
-		header := fmt.Sprintf("%s\t(%d..%d)", ch, cs, ce)
+		header := fmt.Sprintf("%s_(%d..%d)", ch, cs, ce)
 		if printSegSitePos {
 			segsites := buildSegSiteStr(seg, ns, printOneBased)
 			header += " " + segsites
@@ -501,18 +503,22 @@ func homologsToFasta(h Homologs, subject subject,
 	}
 	return sequences
 }
-func findSegment(seg seg, subject subject) (string, int, int) {
+func findSegment(seg seg, subject subject,
+	shiftRefRight bool) (string, int, int) {
+
 	var ch string
-	var cs, ce int
+	var cs, ce, shift int
 	contigHeaders := subject.contigHeaders
 	contigSegments := subject.contigSegments
 	contigShifts := subject.contigShifts
+
 	for i, contigSeg := range contigSegments {
 		if isWithin(seg, contigSeg) {
 			ch = contigHeaders[i]
-			shift := contigShifts[ch]
-			if i > 0 {
-				shift -= 1
+			if shiftRefRight {
+				shift = contigShifts[ch]
+				chFields := strings.Split(ch, "$")
+				ch = chFields[0]
 			}
 			cs = seg.s - contigSeg.s + shift
 			ce = cs + seg.l

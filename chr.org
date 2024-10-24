@@ -373,19 +373,21 @@ start coordinates to the right. We cannot determine the size of the
 shift without a direct comparison of the \ty{Reference} to the
 original sequence. This would be a resource-intensive task to carry
 out within the \ty{chr} package. However, it’s usually possible to
-calculate the new coordinates before calling \ty{Intersect}. Thusm we
+calculate the new coordinates before calling \ty{Intersect}. Thus, we
 expect the new start coordinates to be included in the headers of the
 subsetted reference in this format:
 \begin{verbatim}
->subsetContigName$x
+>originalContigName$n$x
 \end{verbatim}
-where \ty{x} is the start of the contig in the original reference. We
-use the dollar sign \ty{\$} to safely delimit the name and the
-coordinate. Thus, \textbf{if you plan to use \ty{Intersect} on a
-  subsetted reference but want the output to show the original
-  coordinates, consider adding the suffix \ty{\$x} (zero-based) to the
-  headers of the pre-processed sequences.} These will be recognized by
-\ty{Intersect} when \ty{ShiftRefRight} is enabled.
+where \ty{n} is a number of the piece of the original contig, \ty{x}
+is the start of the contig in the original reference. The \ty{n} field
+ensures the uniqueness of the header name. We use the dollar sign
+\ty{\$} to safely delimit the name and the coordinate. Thus,
+\textbf{if you plan to use \ty{Intersect} on a subsetted reference but
+  want the output to show the original coordinates, consider adding
+  the suffix \ty{\$n\$x} (\ty{x} is zero-based) to the headers of the
+  pre-processed sequences.} These will be recognized by \ty{Intersect}
+when \ty{ShiftRefRight} is enabled.
 #+end_export
 #+begin_export latex
 \subsection{\textbf{Function \ty{Intersect}}} \label{Intersect}
@@ -499,7 +501,7 @@ all contigs into one sequence.
   subjectHeader := r[0].Header()
   subjectData := r[0].Data()
   if shiftRefRight {
-	  err := extractShiftField(&subjectHeader, &subject)
+	  err := extractShiftField(subjectHeader, &subject)
 	  if err != nil {
 		  fmt.Fprint(os.Stderr, err)
 		  os.Exit(1)
@@ -514,34 +516,33 @@ all contigs into one sequence.
 #+end_src
 #+begin_export latex
 \subsubsection{Read the reference contig shift}
-The function \ty{extractShiftField} accepts pointers to a header and
+The function \ty{extractShiftField} accepts a header and a pointer to
 the \ty{subject} struct. It updates the \ty{subject.contigShifts} map
-if the input header contains the shift field \ty{\$x}
+if the input header contains shift fields \ty{\$n\$x}
 (Section~\ref{Shifts}). The function's only return is an error.
 
 We initialize an error, then check whether our input variables are
-\ty{nil}. Then we create a regular expression, parse the header, and
-create error messages if there are problems with the parsing. Once we
-have read the shift field, we remove it from the header and update the
-shifts map of the \ty{subject} struct.
+empty. Then we split the header into fields by \ty{\$}, and create
+error messages if there are problems with the splitting. Once we have
+read the shift fields, we update the shifts map of the \ty{subject}
+struct.
 #+end_export
 #+begin_src go <<Functions>>=
-  func extractShiftField(header *string, subject *subject) error {
+  func extractShiftField(header string, subject *subject) error {
 	  var err error
-	  //<<Are the inputs \ty{nil}?>>
-	  headerFields := strings.Split(*header, "$")
+	  //<<Are the inputs empty?>>
+	  headerFields := strings.Split(header, "$")
 
-	  if len(headerFields) < 2 || headerFields[1] == "" {
+	  if len(headerFields) < 3 || <<Any field is empty>>  {
 		  //<<Error of splitting>>
 	  }
-  
-	  shift, errConv := strconv.Atoi(headerFields[1])
+
+	  shift, errConv := strconv.Atoi(headerFields[2])
 	  if errConv != nil {
 		  //<<Error of type conversion>>
 	  }
 
-	  *header = headerFields[0]
-	  subject.contigShifts[*header] = shift
+	  subject.contigShifts[header] = shift
 
 	  return err
   }
@@ -555,13 +556,14 @@ We import \ty{strings} and \ty{strconv}.
   "strconv"
 #+end_src
 #+begin_export latex
-We check whether the header or the subject are \ty{nil}. If so,
-we create the corresponding error message and return early.
+We check whether the header is an empty string or the subject is
+\ty{nil}. If so, we create the corresponding error message and return
+early.
 #+end_export
-#+begin_src go <<Are the inputs \ty{nil}?>>=
-  if header == nil {
+#+begin_src go <<Are the inputs empty?>>=
+  if header == "" {
 	  err = fmt.Errorf("chr.Intersect: failed " +
-		  "extractShiftField: header is nil\n")
+		  "extractShiftField: header is empty\n")
 	  return err
   }
   if subject == nil {
@@ -571,12 +573,18 @@ we create the corresponding error message and return early.
   }
 #+end_src
 #+begin_export latex
+We check if any of the fields of the header is empty.
+#+end_export
+#+begin_src go <<Any field is empty>>=
+  headerFields[1] == "" || headerFields[2] == ""
+#+end_src
+#+begin_export latex
 We create an error message for a failed field splitting.
 #+end_export
 #+begin_src go <<Error of splitting>>=
   err = fmt.Errorf(
 	  "chr.Intersect: error reading " +
-	  "the shift field in the reference " +
+	  "shift fields in the reference " +
 	  "header %v\n", header)
 #+end_src
 #+begin_export latex
@@ -586,7 +594,7 @@ and extend it with the error of the \ty{strconv.Atoi}.
 #+begin_src go <<Error of type conversion>>=
   err = fmt.Errorf(
 	  "chr.Intersect: error converting " +
-	  "the shift field into an integer:" +
+	  "a shift field into an integer:" +
 	  "\n\t%v\n", errConv)
 #+end_src
 #+begin_export latex
@@ -604,7 +612,7 @@ and the total subject sequence we have accumulated so far.
 	  seqL := len(seqD)
 	  var cseg seg // initialize a segment
 	  if shiftRefRight {
-		  err := extractShiftField(&seqH, &subject)
+		  err := extractShiftField(seqH, &subject)
 		  if err != nil {
 			  fmt.Fprint(os.Stderr, err)
 			  os.Exit(1)
@@ -1278,7 +1286,7 @@ written. The output of this function is the \ty{return} of
   printOneBased := parameters.PrintOneBased
   printSegSitePos := parameters.PrintSegSitePos
   result := homologsToFasta(homologs, subject, printN,
-	  printOneBased, printSegSitePos)
+	  printOneBased, printSegSitePos, shiftRefRight)
   return result
 #+end_src
 #+begin_export latex
@@ -1293,8 +1301,11 @@ data, its header, and use them to make a sequence.
 #+end_export
 #+begin_src go <<Functions>>=
   func homologsToFasta(h Homologs, subject subject,
-	  printN bool, printOneBased bool,
-	  printSegSitePos bool) []*fasta.Sequence {
+	  printN bool,
+	  printOneBased bool,
+	  printSegSitePos bool,
+	  shiftRefRight bool) []*fasta.Sequence {
+	
 	  var sequences []*fasta.Sequence
 	  segs := h.S
 	  ns := h.N
@@ -1332,10 +1343,10 @@ subject or an \ty{N}.
 #+end_src
 #+begin_export latex
 We construct the sequence's header that contains the orginal contig's
-header \ty{ch}, a tab, and coordianates of the start (\ty{cs}) and the
+header \ty{ch}, an underscore, and coordianates of the start (\ty{cs}) and the
 end (\ty{ce}):
 \begin{verbatim}
-ch\t(cs..ce)
+ch_(cs..ce)
 \end{verbatim}
 To find \ty{ch}, \ty{cs}, and \ty{ce}, we call \ty{findSegment}, which
 we still have to implement. We convert zero-based end-exclusive
@@ -1348,11 +1359,11 @@ segsite positions string with the \ty{buildSegSiteStr} function, which
 is yet to be defined. Then we append the string to the header.
 #+end_export
 #+begin_src go <<Construct sequence header>>=
-  ch, cs, ce := findSegment(seg, subject)
+  ch, cs, ce := findSegment(seg, subject, shiftRefRight)
   if printOneBased {
 	  cs += 1
   }
-  header := fmt.Sprintf("%s\t(%d..%d)", ch, cs, ce)
+  header := fmt.Sprintf("%s_(%d..%d)", ch, cs, ce)
   if printSegSitePos {
 	  segsites := buildSegSiteStr(seg, ns, printOneBased)
 	  header += " " + segsites
@@ -1360,38 +1371,48 @@ is yet to be defined. Then we append the string to the header.
 #+end_src
 #+begin_export latex
 \subsubsection{Auxillary functions for output formatting}
-\textbf{\ty{findSegment}} accepts a segment and a struct of
-\ty{subject}. It finds the subject contig, to which the segment
-belongs, and returns its header and the coordinates of the segment on
-the contig.
+\textbf{\ty{findSegment}} accepts a segment, a struct of \ty{subject},
+and a switch for processing shift fields. It finds the subject
+contig, to which the segment belongs, and returns its header without
+the shift fields and the coordinates of the segment on the contig.
 
-We initialize the output variables and 'unpack' some fields of the
-\ty{subject}. Then we check whether our segment is located within some
-of the contigs using the function \ty{isWithin}, which we still need
-to write. If so, we get its header. Then we get the segment's start
-and shift it using the map of shifts. We remember that we were adding
-one to the intermediate total length of the subject to consider the
-sentinel exclamation marks inserted between the concatenated contigs
-(Section~\ref{Prepare the subject}). Thus, we have to subtract it back
-if we're dealig with any contig starting from the second. Once we have
-the shift value at hand, we can calculate the end. A segment can be
-found only once because the homologs are unique and do not
-overlap. Thus, we break as soon as we've found the contig it belongs
-to.
+We initialize the variables:
+\begin{itemize}
+  \itemsep0em
+\item \ty{ch} for contig header,
+\item \ty{cs}, \ty{ce} for start and end of the segment on the related
+  contig,
+  \item a \ty{shift} value to add to \ty{cs}. It takes a non-zero
+    value if \ty{shiftRefRight} is toggled.
+\end{itemize}
+
+After this, we 'unpack' some fields of the \ty{subject}. Then we check
+whether our segment is located within some of the contigs using the
+function \ty{isWithin}, which we still need to write. If so, we get
+the contig's header and find the shift value using the map of
+shifts. After this, we remove the shifr fields.
+
+Once we have the shift value at hand, we can calculate \ty{cs} and
+\ty{ce}. A segment can be found only once because the homologs are
+unique and do not overlap, so we break as soon as we've found the
+contig it belongs to.
 #+end_export
 #+begin_src go <<Functions>>=
-  func findSegment(seg seg, subject subject) (string, int, int) {
+  func findSegment(seg seg, subject subject,
+	  shiftRefRight bool) (string, int, int) {
+
 	  var ch string
-	  var cs, ce int
+	  var cs, ce, shift int
 	  contigHeaders := subject.contigHeaders
 	  contigSegments := subject.contigSegments
 	  contigShifts := subject.contigShifts
+
 	  for i, contigSeg := range contigSegments {
 		  if isWithin(seg, contigSeg) {
 			  ch = contigHeaders[i]
-			  shift := contigShifts[ch]
-			  if i > 0 {
-				  shift -= 1
+			  if shiftRefRight {
+				  shift = contigShifts[ch]
+				  //<<Truncate the shift field>>
 			  }
 			  cs = seg.s - contigSeg.s + shift
 			  ce = cs + seg.l
@@ -1409,6 +1430,14 @@ an outer \ty{seg}.
   func isWithin(in seg, out seg) bool {
 	  return in.s >= out.s && in.end() <= out.end()
   }
+#+end_src
+#+begin_export latex
+We remove the remainders of the \ty{\$}-separated fields from the
+contig name.
+#+end_export
+#+begin_src go <<Truncate the shift field>>= 
+  chFields := strings.Split(ch, "$")
+  ch = chFields[0]
 #+end_src
 #+begin_export latex
 \textbf{\ty{buildSegSiteStr}} accepts a segment, a map of segregating

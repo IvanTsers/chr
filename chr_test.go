@@ -203,7 +203,8 @@ func TestFindHomologs(t *testing.T) {
 			query := prepareQuery("data/q/" + tc.input)
 			h := findHomologs(query, subject)
 			h.filterOverlaps()
-			get := homologsToFasta(h, subject, false, true, true)
+			get := homologsToFasta(h, subject, false, true, true,
+				false)
 			for i, g := range get {
 				fmt.Fprintln(os.Stderr, g.Header())
 				if !reflect.DeepEqual(g.Data(),
@@ -334,7 +335,7 @@ func TestIntersect(t *testing.T) {
 	}
 }
 func TestShiftRefSeg(t *testing.T) {
-	want := fmt.Sprintf("t1\t(%d..%d)",
+	want := fmt.Sprintf("t1_(%d..%d)",
 		2+4477, 1052+4477)
 	ref := readFasta("data/i/shift/s1.fasta")
 	parameters := Parameters{
