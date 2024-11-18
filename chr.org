@@ -324,7 +324,7 @@ contains:
 We import \ty{fasta}.
 #+end_export
 #+begin_src go <<Imports>>=
-  "github.com/ivantsers/fasta"
+  "github.com/evolbioinf/fasta"
 #+end_src
 #+begin_export latex
 \subsubsection{Coordinate systems: parameter \ty{ShiftRefRight}}\label{Shifts}
@@ -481,10 +481,16 @@ been set to \ty{true}.
 #+begin_src go <<Normalize the contigs>>=
   for i, _ := range r {
 	  if parameters.CleanSubject {
-		  r[i].Clean()
+		  fastautils.Clean(r[i])
 	  }
-	  r[i].DataToUpper()
+	  fastautils.DataToUpper(r[i])
   }
+#+end_src
+#+begin_export latex
+We import \ty{fastautils}.
+#+end_export
+#+begin_src go <<Imports>>=
+  "github.com/ivantsers/fastautils"
 #+end_src
 #+begin_export latex
 We 'unpack' the \ty{ShiftRefRight} fieild of the parameters, then
@@ -728,15 +734,25 @@ and \ty{l} fields.
   var query query
   filePath := d + "/" + entry.Name()
   f, _ := os.Open(filePath)
-  queryData := fasta.ReadAll(f)
+  queryData := fastautils.ReadAll(f)
   f.Close()
-  qSeq := fasta.Concatenate(queryData, '?')
+  qSeq, err := fastautils.Concatenate(queryData, '?')
+  //<<Respond to the error of sequence concatenation>>
   if parameters.CleanQuery {
-	  qSeq.Clean()
+	  fastautils.Clean(qSeq)
   }
-  qSeq.DataToUpper()
+  fastautils.DataToUpper(qSeq)
   query.seq = qSeq.Data()
-  query.l = qSeq.Length()
+  query.l = len(qSeq.Data())
+#+end_src
+#+begin_export latex
+We print the error and exit.
+#+end_export
+#+begin_src go <<Respond to the error of sequence concatenation>>=
+  if err != nil {
+	  fmt.Fprint(os.Stderr, err)
+	  os.Exit(1)
+  }
 #+end_src
 #+begin_export latex
 The function \ty{findHomologs} accepts structs of \ty{subject} and

@@ -218,7 +218,7 @@ over them.
 We import \ty{fasta}.
 #+end_export
 #+begin_src go <<Testing imports>>=
-  "github.com/ivantsers/fasta"
+  "github.com/evolbioinf/fasta"
 #+end_src
 #+begin_export latex
 We test \ty{findHomologs} on input sequences covering ten cases
@@ -275,22 +275,21 @@ Table~\ref{tab:testCasesFH}.
 #+end_src
 #+begin_export latex
 We define the function \ty{readFasta}, which opens a file and calls
-\ty{fasta.ReadAll} on it.
+\ty{fastautils.ReadAll} on it.
 #+end_export
 #+begin_src go <<Auxillary functions>>=
   func readFasta(path string) []*fasta.Sequence {
 	  f, _ := os.Open(path)
-	  contigs := fasta.ReadAll(f)
+	  contigs := fastautils.ReadAll(f)
 	  f.Close()
 	  return contigs
   }
 #+end_src
 #+begin_export latex
-We import \ty{os} and \ty{fasta}.
+We import \ty{os}.
 #+end_export
 #+begin_src go <<Testing imports>>=
   "os"
-  "github.com/ivantsers/fasta"
 #+end_src
 #+begin_export latex
 We define the test cases.
@@ -330,8 +329,14 @@ We normalize the contigs using the method \ty{fasta.Clean}.
 #+end_export
 #+begin_src go <<Normalize test contigs>>=
   for i, _ := range r {
-	  r[i].Clean()
+	  fastautils.Clean(r[i])
   }
+#+end_src
+#+begin_export latex
+We import \texttt{fastautils}.
+#+end_export
+#+begin_src go <<Testing imports>>=
+  "github.com/ivantsers/fastautils"
 #+end_src
 #+begin_export latex
 We extract the \ty{Header} and \ty{Data} of the first subject
@@ -435,10 +440,10 @@ from it, and concatenate and clean them. Then we set the values of the
   func prepareQuery(path string) query {
 	  var query query
 	  q := readFasta(path)
-	  qSeq := fasta.Concatenate(q, 0)
-	  qSeq.Clean()
+	  qSeq, _ := fastautils.Concatenate(q, 0)
+	  fastautils.Clean(qSeq)
 	  query.seq = qSeq.Data()
-	  query.l = qSeq.Length()
+	  query.l = len(qSeq.Data())
 	  return query
   }
 #+end_src
@@ -685,8 +690,8 @@ shortest slice.
 	  }
 
   }
-  wConcat := fasta.Concatenate(want, 0)
-  gConcat := fasta.Concatenate(get, 0)
+  wConcat, _ := fastautils.Concatenate(want, 0)
+  gConcat, _ := fastautils.Concatenate(get, 0)
   if len(wConcat.Data()) != len(gConcat.Data()) {
 	  t.Errorf("\nthe result has %d nucleotides, " +
 		  "expected %d",

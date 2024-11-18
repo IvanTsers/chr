@@ -3,8 +3,9 @@ package chr
 import (
 	"fmt"
 	"github.com/evolbioinf/esa"
+	"github.com/evolbioinf/fasta"
 	"github.com/evolbioinf/sus"
-	"github.com/ivantsers/fasta"
+	"github.com/ivantsers/fastautils"
 	"math"
 	"math/rand"
 	"os"
@@ -16,7 +17,7 @@ import (
 
 func readFasta(path string) []*fasta.Sequence {
 	f, _ := os.Open(path)
-	contigs := fasta.ReadAll(f)
+	contigs := fastautils.ReadAll(f)
 	f.Close()
 	return contigs
 }
@@ -24,7 +25,7 @@ func prepareSubject(path string) subject {
 	var subject subject
 	r := readFasta(path)
 	for i, _ := range r {
-		r[i].Clean()
+		fastautils.Clean(r[i])
 	}
 	subjectHeader := r[0].Header()
 	subjectData := r[0].Data()
@@ -73,10 +74,10 @@ func prepareSubject(path string) subject {
 func prepareQuery(path string) query {
 	var query query
 	q := readFasta(path)
-	qSeq := fasta.Concatenate(q, 0)
-	qSeq.Clean()
+	qSeq, _ := fastautils.Concatenate(q, 0)
+	fastautils.Clean(qSeq)
 	query.seq = qSeq.Data()
-	query.l = qSeq.Length()
+	query.l = len(qSeq.Data())
 	return query
 }
 func containsData(slice []*fasta.Sequence,
@@ -310,8 +311,8 @@ func TestIntersect(t *testing.T) {
 				}
 
 			}
-			wConcat := fasta.Concatenate(want, 0)
-			gConcat := fasta.Concatenate(get, 0)
+			wConcat, _ := fastautils.Concatenate(want, 0)
+			gConcat, _ := fastautils.Concatenate(get, 0)
 			if len(wConcat.Data()) != len(gConcat.Data()) {
 				t.Errorf("\nthe result has %d nucleotides, "+
 					"expected %d",

@@ -3,8 +3,9 @@ package chr
 import (
 	"fmt"
 	"github.com/evolbioinf/esa"
+	"github.com/evolbioinf/fasta"
 	"github.com/evolbioinf/sus"
-	"github.com/ivantsers/fasta"
+	"github.com/ivantsers/fastautils"
 	"math"
 	"os"
 	"sort"
@@ -148,9 +149,9 @@ func Intersect(parameters Parameters) []*fasta.Sequence {
 		subject.contigShifts = make(map[string]int)
 		for i, _ := range r {
 			if parameters.CleanSubject {
-				r[i].Clean()
+				fastautils.Clean(r[i])
 			}
-			r[i].DataToUpper()
+			fastautils.DataToUpper(r[i])
 		}
 		shiftRefRight := parameters.ShiftRefRight
 		subjectHeader := r[0].Header()
@@ -217,15 +218,19 @@ func Intersect(parameters Parameters) []*fasta.Sequence {
 			var query query
 			filePath := d + "/" + entry.Name()
 			f, _ := os.Open(filePath)
-			queryData := fasta.ReadAll(f)
+			queryData := fastautils.ReadAll(f)
 			f.Close()
-			qSeq := fasta.Concatenate(queryData, '?')
-			if parameters.CleanQuery {
-				qSeq.Clean()
+			qSeq, err := fastautils.Concatenate(queryData, '?')
+			if err != nil {
+				fmt.Fprint(os.Stderr, err)
+				os.Exit(1)
 			}
-			qSeq.DataToUpper()
+			if parameters.CleanQuery {
+				fastautils.Clean(qSeq)
+			}
+			fastautils.DataToUpper(qSeq)
 			query.seq = qSeq.Data()
-			query.l = qSeq.Length()
+			query.l = len(qSeq.Data())
 			h := findHomologs(query, subject)
 			homologs.S = append(homologs.S, h.S...)
 			homologs.N = appendKeys(homologs.N, h.N)
