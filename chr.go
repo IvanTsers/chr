@@ -486,12 +486,13 @@ func homologsToFasta(h Homologs, subject subject,
 	for _, seg := range segs {
 		start := seg.s
 		end := seg.end()
-		data := make([]byte, 0, seg.l)
-		for j := start; j < end; j++ {
-			if printN && ns[j] {
-				data = append(data, 'N')
-			} else {
-				data = append(data, subject.esa.T[j])
+		data := make([]byte, seg.l)
+		copy(data, subject.esa.T[start:end])
+		if printN {
+			for j := 0; j < seg.l; j++ {
+				if ns[start+j] {
+					data[j] = 'N'
+				}
 			}
 		}
 		ch, cs, ce := findSegment(seg, subject, shiftRefRight)
@@ -537,20 +538,24 @@ func isWithin(in seg, out seg) bool {
 }
 func buildSegSiteStr(seg seg, ns map[int]bool,
 	printOneBased bool) string {
-	var segSiteStr string
-	var k []int
+	var positions []int
 	for i := seg.s; i < seg.end(); i++ {
 		if ns[i] {
-			k = append(k, i-seg.s)
+			pos := i - seg.s
+			if printOneBased {
+				pos++
+			}
+			positions = append(positions, pos)
 		}
 	}
-	segSiteStr += fmt.Sprintf("%d", len(k))
-	for i := 0; i < len(k); i++ {
-		coord := k[i]
-		if printOneBased {
-			coord = k[i] + 1
-		}
-		segSiteStr += fmt.Sprintf(" %d", coord)
+	var builder strings.Builder
+	numSegSites := len(positions)
+	builder.WriteString(strconv.Itoa(numSegSites))
+
+	for _, pos := range positions {
+		builder.WriteString(" ")
+		builder.WriteString(strconv.Itoa(pos))
 	}
-	return segSiteStr
+
+	return builder.String()
 }

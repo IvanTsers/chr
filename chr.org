@@ -1335,26 +1335,31 @@ data, its header, and use them to make a sequence.
   }
 #+end_src
 #+begin_export latex
-We get start and end positions of the current segment, initialize a
-slice of bytes, and append bytes to it.
+As the majority of bytes are not \ty{N}s, we copy the part of the
+subject's sequence directly, and only then check if we need to print
+\ty{N}s.
+
+We get start and end positions of the current segment, initialize
+a slice of bytes, and append bytes to it.
 #+end_export
 #+begin_src go <<Construct sequence data>>=
   start := seg.s
   end := seg.end()
-  data := make([]byte, 0, seg.l)
-  for j := start; j < end; j++ {
-	  //<<Append next byte to the data>>
+  data := make([]byte, seg.l)
+  copy(data, subject.esa.T[start:end])
+  if printN {
+	  //<<Replace segregating sites with \ty{N}s>>
   }
 #+end_src
 #+begin_export latex
-We decide whether the next byte is going to be a nucleotide of the
-subject or an \ty{N}.
+We check if each position of the segment is listed in the map of
+segregating sites. If so, we replace the byte with an \ty{N}.
 #+end_export
-#+begin_src go <<Append next byte to the data>>=
-  if printN && ns[j] {
-	  data = append(data, 'N')
-  } else {
-	  data = append(data, subject.esa.T[j])
+#+begin_src go <<Replace segregating sites with \ty{N}s>>=
+  for j := 0; j < seg.l; j++ {
+	  if ns[start+j] {
+		  data[j] = 'N'
+	  }
   }
 #+end_src
 #+begin_export latex
@@ -1472,49 +1477,46 @@ sequence has the following format:
 #+begin_src go <<Functions>>=
   func buildSegSiteStr(seg seg, ns map[int]bool,
 	  printOneBased bool) string {
-	  var segSiteStr string
-	  //<<Add segsites found within the \ty{seg}>>
-	  return segSiteStr
-  }
-#+end_src
-#+begin_export latex
-We extract the relevant positions and store them in the slice
-\ty{k}. Then we append these positions to our \ty{segSiteStr}.
-#+end_export
-#+begin_src go <<Add segsites found within the \ty{seg}>>=
-  var k []int
-  //<<Extract relevant positions>>
-  segSiteStr += fmt.Sprintf("%d", len(k))
-  for i := 0; i < len(k); i++ {
-	  //<<Append a segsite>>
-  }
-#+end_src
-#+begin_export latex
-We traverse the segregating sites of the current segment, find
-existing keys, and save the coordinate in a slice.
-#+end_export
-#+begin_src go <<Extract relevant positions>>=
-  for i := seg.s; i < seg.end(); i++ {
-	  if ns[i] {
-		  k = append(k, i - seg.s)
+	  var positions []int
+	  for i := seg.s; i < seg.end(); i++ {
+		  //<<Add positions found within the \ty{seg}>>
 	  }
+	  //<<Build the segsite string>>
   }
 #+end_src
 #+begin_export latex
-Before printing the output, we chose between one- and zero-based
-coordinate system.
+We traverse the segregating sites of the current segment, transform
+the coordinates, and save the coordinate in \ty{positions}.
 #+end_export
-#+begin_src go <<Append a segsite>>=
-  //<<One- or zero-based coord?>>
-  segSiteStr += fmt.Sprintf(" %d", coord)
+#+begin_src go <<Add positions found within the \ty{seg}>>=
+  if ns[i] {
+	  pos := i - seg.s
+	  //<<Convert to one-based?>>
+	  positions = append(positions, pos)
+  }
 #+end_src
 #+begin_export latex
-We check the \ty{printOneBased} switch and adjust the coordinate if
-necessary.
+We add one if the corresponding \ty{Parameters}' switch is toggled.
 #+end_export
-#+begin_src go <<One- or zero-based coord?>>=
-  coord := k[i]
+#+begin_src go <<Convert to one-based?>>=
   if printOneBased {
-	  coord = k[i]+1
+	  pos++
   }
+#+end_src
+#+begin_export latex
+We initialize a \ty{Builder} for our output string. Then we write the
+number of segregating sites followed by their coordinates separated with
+blanks.
+#+end_export
+#+begin_src go <<Build the segsite string>>=
+  var builder strings.Builder
+  numSegSites := len(positions)
+  builder.WriteString(strconv.Itoa(numSegSites))
+
+  for _, pos := range positions {
+	  builder.WriteString(" ")
+	  builder.WriteString(strconv.Itoa(pos))
+  }
+
+  return builder.String()
 #+end_src
