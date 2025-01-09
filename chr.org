@@ -651,19 +651,16 @@ length of a non-random shustring. The latter task is delegated to
 in \ty{parameters.ShustrPval} that we also refer to as \ty{pval}.
 #+end_export
 #+begin_src go <<Calculate the minimum anchor length>>=
-  atgc := 0.0
-  gc := 0.0
+  numBases := float64(len(subjectData))
+  numGC := 0.0
   for _, c := range subjectData {
-	  if c == 'A' || c == 'C' || c == 'G' || c == 'T' {
-		  atgc++
-		    if c == 'C' || c == 'G' {
-			    gc++
-		    }
+	  if c == 'C' || c == 'G' {
+		  numGC++
 	  }
   }
-  gcContent := gc/atgc
+  gc := numGC/numBases
   pval := parameters.ShustrPval
-  minAncLen := sus.Quantile(cL, gcContent, pval)
+  minAncLen := sus.Quantile(cL, gc, pval)
 #+end_src
 #+begin_export latex
 We import \ty{sus}.

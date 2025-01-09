@@ -189,19 +189,16 @@ func Intersect(parameters Parameters) []*fasta.Sequence {
 				cL += seqL
 			}
 		}
-		atgc := 0.0
-		gc := 0.0
+		numBases := float64(len(subjectData))
+		numGC := 0.0
 		for _, c := range subjectData {
-			if c == 'A' || c == 'C' || c == 'G' || c == 'T' {
-				atgc++
-				if c == 'C' || c == 'G' {
-					gc++
-				}
+			if c == 'C' || c == 'G' {
+				numGC++
 			}
 		}
-		gcContent := gc / atgc
+		gc := numGC / numBases
 		pval := parameters.ShustrPval
-		minAncLen := sus.Quantile(cL, gcContent, pval)
+		minAncLen := sus.Quantile(cL, gc, pval)
 		rev := fasta.NewSequence("reverse", subjectData)
 		rev.ReverseComplement()
 		subjectData = append(subjectData, '#')
