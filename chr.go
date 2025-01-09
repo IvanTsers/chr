@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // Data structure Homologs describes homologous regions of a subject found in queries. This data type contains a slice of segments of the subject S and a map of segregating sites N.
@@ -45,7 +46,7 @@ type match struct {
 	endQ   int
 }
 
-// Fields of this data structure contain parameters used to call Intersect(). The parameters include:  1) a reference; 2) a switch to shift reference contig start coordinates to the rigth; 3) path to the directory of target genomes minus the reference; 4) threshold, the minimum fraction of intersecting genomes; 5) p-value of the shustring length (needed for sus.Quantile); 6) a switch to clean* subject sequence; 7) a switch to clean* query sequences; 8) a switch to print positions of segregating sites in output headers; 9) a switch to print N at the positions of mismatches; 10) a switch to print one-based coordinates. *To clean a sequence is to remove non-ATGC nucleotides.
+// Fields of this data structure contain parameters used to call Intersect(). The parameters include:  1) a reference; 2) a switch to shift reference contig start coordinates to the rigth; 3) a path to the directory of target genomes minus the reference; 4) a threshold, the minimum fraction of intersecting genomes; 5) p-value of the shustring length (needed for sus.Quantile); 6) a switch to clean* subject sequence; 7) a switch to clean* query sequences; 8) a switch to print positions of segregating sites in output headers; 9) a switch to print N at the positions of mismatches; 10) a switch to print one-based coordinates; 11) a number of threads.  *To clean a sequence is to remove non-ATGC nucleotides.
 type Parameters struct {
 	Reference       []*fasta.Sequence
 	ShiftRefRight   bool
@@ -57,6 +58,7 @@ type Parameters struct {
 	PrintSegSitePos bool
 	PrintN          bool
 	PrintOneBased   bool
+	NumThreads      int
 }
 
 func (h *Homologs) filterOverlaps() {
@@ -210,28 +212,54 @@ func Intersect(parameters Parameters) []*fasta.Sequence {
 		subject.a = minAncLen
 		subject.contigHeaders = contigHeaders
 		subject.contigSegments = contigSegs
+		// Prepare to process queries concurrently>>
+		var wg sync.WaitGroup
+		var mu sync.Mutex
+		fileChan := make(chan string)
 		homologs := Homologs{S: []seg{}, N: make(map[int]bool)}
-		for _, entry := range dirEntries {
-			var query query
-			filePath := d + "/" + entry.Name()
-			f, _ := os.Open(filePath)
-			queryData := fastautils.ReadAll(f)
-			f.Close()
-			qSeq, err := fastautils.Concatenate(queryData, '?')
-			if err != nil {
-				fmt.Fprint(os.Stderr, err)
-				os.Exit(1)
+		worker := func() {
+			defer wg.Done()
+			for file := range fileChan {
+				var query query
+				f, _ := os.Open(file)
+				queryData := fastautils.ReadAll(f)
+				f.Close()
+				qSeq, err := fastautils.Concatenate(queryData, '?')
+				if err != nil {
+					fmt.Fprint(os.Stderr, err)
+					os.Exit(1)
+				}
+				if parameters.CleanQuery {
+					fastautils.Clean(qSeq)
+				}
+				fastautils.DataToUpper(qSeq)
+				query.seq = qSeq.Data()
+				query.l = len(qSeq.Data())
+				h := findHomologs(query, subject)
+				mu.Lock()
+				homologs.S = append(homologs.S, h.S...)
+				homologs.N = appendKeys(homologs.N, h.N)
+				mu.Unlock()
 			}
-			if parameters.CleanQuery {
-				fastautils.Clean(qSeq)
-			}
-			fastautils.DataToUpper(qSeq)
-			query.seq = qSeq.Data()
-			query.l = len(qSeq.Data())
-			h := findHomologs(query, subject)
-			homologs.S = append(homologs.S, h.S...)
-			homologs.N = appendKeys(homologs.N, h.N)
 		}
+		numThreads := parameters.NumThreads
+		if numThreads <= 0 {
+			numThreads = 1
+		}
+		// Start workers
+		for i := 0; i < numThreads; i++ {
+			wg.Add(1)
+			go worker()
+		}
+		go func() {
+			for _, entry := range dirEntries {
+				filePath := d + "/" + entry.Name()
+				fileChan <- filePath
+			}
+			close(fileChan)
+		}()
+		// Wait for all workers to finish
+		wg.Wait()
 		f := parameters.Threshold
 		g := numFiles
 		t := int(math.Floor(f * float64(g)))
@@ -287,6 +315,12 @@ func extractShiftField(header string, subject *subject) error {
 	return err
 }
 
+func appendKeys(a map[int]bool, b map[int]bool) map[int]bool {
+	for key, _ := range b {
+		a[key] = true
+	}
+	return a
+}
 func findHomologs(query query, subject subject) Homologs {
 	h := Homologs{S: []seg{}, N: make(map[int]bool)}
 	var qc, qp int
@@ -409,12 +443,6 @@ func compare(s byte, q byte) bool {
 		notEqual = false
 	}
 	return notEqual
-}
-func appendKeys(a map[int]bool, b map[int]bool) map[int]bool {
-	for key, _ := range b {
-		a[key] = true
-	}
-	return a
 }
 func pileHeights(h Homologs, strandL int) []int {
 	pile := make([]int, strandL)

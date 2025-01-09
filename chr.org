@@ -294,14 +294,15 @@ contains:
 !
 !1) a reference;
 !2) a switch to shift reference contig start coordinates to the rigth;
-!3) path to the directory of target genomes \textit{minus the reference};
-!4) threshold, the minimum fraction of intersecting genomes;
+!3) a path to the directory of target genomes \textit{minus the reference};
+!4) a threshold, the minimum fraction of intersecting genomes;
 !5) p-value of the shustring length (needed for \ty{sus.Quantile});
 !6) a switch to clean* subject sequence;
 !7) a switch to clean* query sequences;
 !8) a switch to print positions of segregating sites in output headers;
 !9) a switch to print \ty{N} at the positions of mismatches;
-!10) a switch to print one-based coordinates.
+!10) a switch to print one-based coordinates;
+!11) a number of threads. 
 !*To clean a sequence is to remove non-ATGC nucleotides.
 
 \ty{Intersect} is defined in Section~\ref{Intersect}.
@@ -318,6 +319,7 @@ contains:
 	  PrintSegSitePos bool
 	  PrintN bool
 	  PrintOneBased bool
+	  NumThreads int
   }
 #+end_src
 #+begin_export latex
@@ -693,11 +695,9 @@ We populate the \ty{subject} struct with the calculated values.
 #+end_src
 #+begin_export latex
 \subsubsection{Find homologous regions}
-We initialize a slice of segments to store found homologous
-regions. We iterate over the files, prepare \ty{queries}, and call the
-\ty{findHomologs} function, which we still have to write. We append
-the output of this function to the \ty{homologs} slice we have just
-initialized (Figure~\ref{fig:findHomologs}).
+In this section, we search for homologous regions in multiple queries
+and append the results to the same struct of \ty{homologs}
+(Figure~\ref{fig:findHomologs}).
 
 \begin{figure}[H]
     \includegraphics[width=0.9\linewidth]{figFindHomologs.eps}
@@ -706,31 +706,111 @@ initialized (Figure~\ref{fig:findHomologs}).
       in a query, selects those that meet anchor criteria, and uses
       these anchors to build segments, which are then filtered for
       overlaps. This process is repeated for each query, and the
-      filtered homologs are added to a common slice that holds all
+      filtered homologs are added to a common struct that holds all
       homologies.}
     \label{fig:findHomologs}
 \end{figure}
+We prepare for a concurrent processing of queries. We create a
+workgroup, a \ty{Mutex}, and a file channel needed for a concurrent
+processing of queries. Finally, we initialize an ultimate slice to
+store all homologs.
+
+We proceed with the definition the \ty{worker} function. Then we check
+the number of threads and start the number of \ty{workers} limited by
+the number of threads specified in the \ty{parameters} struct. The
+workers will receive tasks (file names) from the channel. Once the
+workers are ready, we send query file names to the channel. In the
+end, we wait all workers to finish.
 #+end_export
 #+begin_src go <<Find homologous regions>>=
-  homologs := Homologs{S: []seg{}, N: make(map[int]bool)}
-  for _, entry := range dirEntries {
-	  //<<Prepare a \ty{query}>>
-	  h := findHomologs(query, subject)
-	  homologs.S = append(homologs.S, h.S...)
-	  homologs.N = appendKeys(homologs.N, h.N)
+  // Prepare to process queries concurrently>>
+    var wg sync.WaitGroup
+    var mu sync.Mutex
+    fileChan := make(chan string)
+    homologs := Homologs{S: []seg{}, N: make(map[int]bool)}
+  //<<Define the \ty{worker} function>>
+  //<<Check \ty{numThreads}>>
+  // Start workers
+  for i := 0; i < numThreads; i++ {
+	  wg.Add(1)
+	  go worker()
+  }
+  //<<Send files to the file channel>>
+  // Wait for all workers to finish
+  wg.Wait()
+#+end_src
+#+begin_export latex
+We import \ty{sync}.
+#+end_export
+#+begin_src go <<Imports>>=
+  "sync"
+#+end_src
+#+begin_export latex
+A worker takes a query file from the channel, prepares the query for
+the analysis, calls the \ty{findHomologs} function (which is not
+written yet), and safely appends its output to the struct of
+\ty{homologs} using the \ty{Mutex}. Segregating site positions are
+appended the the function \ty{appendKeys}, which we will define
+shortly.
+#+end_export
+#+begin_src go <<Define the \ty{worker} function>>=
+  worker := func() {
+	  defer wg.Done()
+	  for file := range fileChan {
+		  //<<Prepare the \ty{query}>>
+		  h := findHomologs(query, subject)
+		  mu.Lock()
+		  homologs.S = append(homologs.S, h.S...)
+		  homologs.N = appendKeys(homologs.N, h.N)
+		  mu.Unlock()
+	  }
   }
 #+end_src
 #+begin_export latex
-We initialize and populate a \ty{query} struct (Section~\ref{Data
-  structure query}). We build a path to a query file, read all
-sequences from it, concatenate and normalize them (clean if asked to,
-convert to uppercase always). Then we set the values for the \ty{seq}
-and \ty{l} fields.
+The function \ty{appendKeys} adds \ty{int} keys from the map \ty{b} to
+the map \ty{a}. Both maps hold values of type \ty{bool}.
 #+end_export
-#+begin_src go <<Prepare a \ty{query}>>=
+#+begin_src go <<Functions>>=
+  func appendKeys(a map[int]bool, b map[int]bool) map[int]bool {
+	  for key, _ := range(b) {
+		  a[key] = true
+	  }
+	  return a
+  }
+#+end_src
+#+begin_export latex
+We make sure that the value of the \ty{numThreads} field of the
+\ty{parameters} struct is always greater than zero.
+#+end_export
+#+begin_src go <<Check \ty{numThreads}>>=
+  numThreads := parameters.NumThreads
+  if numThreads <= 0 {
+	  numThreads = 1
+  }
+#+end_src
+#+begin_export latex
+We iterate over the entries in the target directory, build paths to
+the files and send them to the file channel.
+#+end_export
+#+begin_src go <<Send files to the file channel>>=
+  go func() {
+	  for _, entry := range dirEntries {	
+		  filePath := d + "/" + entry.Name()
+		  fileChan <- filePath
+	  }
+	  close(fileChan)
+  }()
+#+end_src
+#+begin_export latex
+Let us return to the \ty{worker}'s tasks. We initialize and populate a
+\ty{query} struct (Section~\ref{Data structure query}). We build a
+path to a query file, read all sequences from it, concatenate and
+normalize them (clean if asked to, convert to uppercase always). Then
+we set the values for the \ty{seq} and \ty{l} fields.
+#+end_export
+#+begin_src go <<Prepare the \ty{query}>>=
   var query query
-  filePath := d + "/" + entry.Name()
-  f, _ := os.Open(filePath)
+  f, _ := os.Open(file)
   queryData := fastautils.ReadAll(f)
   f.Close()
   qSeq, err := fastautils.Concatenate(queryData, '?')
@@ -761,9 +841,9 @@ We initialize variables to operate with during the search for homologs
 and conduct the anchor search. Then we filter overlaps and update the
 map of segregating sites \ty{h.N} with the segregating sites from the
 filtered homologous segments. We do this with help of the function
-\ty{appendKeys}, which we will define later. Finally, we return the
-results of the search. If no homologs were found, we return an empty
-\ty{Homologs} slice, which is still a valid result.
+\ty{appendKeys}. Finally, we return the results of the search. If no
+homologs were found, we return an empty \ty{Homologs} slice, which is
+still a valid result.
 #+end_export
 #+begin_src go <<Functions>>=
   func findHomologs(query query, subject subject) Homologs { 
@@ -1042,7 +1122,7 @@ they are not equal.
 #+end_src
 #+begin_export latex
 To close the current segment is to project it onto the forward strand
-(if necessary) and append it to the slice of homologies.
+(if necessary) and append it to the struct of homologies.
 #+end_export
 #+begin_src go <<Close current segment>>=
   if seg.s > subject.strandL {
@@ -1069,18 +1149,11 @@ We update the previous position in the query and the previous match.
   p.startS = c.startS
 #+end_src
 #+begin_export latex
-The last thing we do before \ty{return} is updating \ty{h.N} using the
-function \ty{appendKeys} in a loop. The function appends \ty{int} keys
-from the map \ty{b} to the map \ty{a}. Both maps hold values of type
-\ty{bool}.
+We start the worker functions. Their number is limited with
+\ty{numThreads}.
 #+end_export
-#+begin_src go <<Functions>>=
-  func appendKeys(a map[int]bool, b map[int]bool) map[int]bool {
-	  for key, _ := range(b) {
-		  a[key] = true
-	  }
-	  return a
-  }
+#+begin_src go <<Start workers>>=
+
 #+end_src
 #+begin_export latex
 \subsubsection{Find common homologous regions}
