@@ -1479,8 +1479,8 @@ We initialize the variables:
 
 After this, we 'unpack' some fields of the \ty{subject}. Then we check
 whether our segment is located within some of the contigs using the
-function \ty{isWithin}, which we still need to write. If so, we get
-the contig's header and find the shift value using the map of
+function \ty{startsWithin}, which we still need to write. If so, we
+get the contig's header and find the shift value using the map of
 shifts. After this, we remove the shifr fields.
 
 Once we have the shift value at hand, we can calculate \ty{cs} and
@@ -1499,7 +1499,7 @@ contig it belongs to.
 	  contigShifts := subject.contigShifts
 
 	  for i, contigSeg := range contigSegments {
-		  if isWithin(seg, contigSeg) {
+		  if startsWithin(seg, contigSeg) {
 			  ch = contigHeaders[i]
 			  if shiftRefRight {
 				  shift = contigShifts[ch]
@@ -1514,12 +1514,12 @@ contig it belongs to.
   }
 #+end_src
 #+begin_export latex
-\textbf{\ty{isWithin}} checks if an inner \ty{seg} is located within
+\textbf{\ty{startsWithin}} checks if an inner \ty{seg} starts within
 an outer \ty{seg}.
 #+end_export
 #+begin_src go <<Functions>>=
-  func isWithin(in seg, out seg) bool {
-	  return in.s >= out.s && in.end() <= out.end()
+  func startsWithin(in seg, out seg) bool {
+	  return in.s >= out.s
   }
 #+end_src
 #+begin_export latex

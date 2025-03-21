@@ -544,7 +544,7 @@ func findSegment(seg seg, subject subject,
 	contigShifts := subject.contigShifts
 
 	for i, contigSeg := range contigSegments {
-		if isWithin(seg, contigSeg) {
+		if startsWithin(seg, contigSeg) {
 			ch = contigHeaders[i]
 			if shiftRefRight {
 				shift = contigShifts[ch]
@@ -558,8 +558,8 @@ func findSegment(seg seg, subject subject,
 	}
 	return ch, cs, ce
 }
-func isWithin(in seg, out seg) bool {
-	return in.s >= out.s && in.end() <= out.end()
+func startsWithin(in seg, out seg) bool {
+	return in.s >= out.s
 }
 func buildSegSiteStr(seg seg, ns map[int]bool,
 	printOneBased bool) string {
