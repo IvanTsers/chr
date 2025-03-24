@@ -185,7 +185,7 @@ func Intersect(parameters Parameters) []*fasta.Sequence {
 				contigHeaders = append(contigHeaders, seqH)
 				subjectData = append(subjectData, '!')
 				cL += 1
-				cseg = newSeg(cL, seqL)
+				cseg = newSeg(cL+1, seqL-1)
 				contigSegs = append(contigSegs, cseg)
 				subjectData = append(subjectData, seqD...)
 				cL += seqL
@@ -271,7 +271,11 @@ func Intersect(parameters Parameters) []*fasta.Sequence {
 		if parameters.CleanQuery {
 			isAdj = makeMapAdj(homologs)
 		}
-		intersection := pileToSeg(p, t, isAdj)
+		contigBounds := make(map[int]bool)
+		for _, contig := range subject.contigSegments {
+			contigBounds[contig.end()+1] = true
+		}
+		intersection := pileToSeg(p, t, isAdj, contigBounds)
 		homologs.S = intersection
 		printN := parameters.PrintN
 		printOneBased := parameters.PrintOneBased
@@ -470,13 +474,18 @@ func makeMapAdj(h Homologs) map[int]bool {
 	}
 	return isAdj
 }
-func pileToSeg(p []int, t int, isAdj map[int]bool) []seg {
+func pileToSeg(p []int, t int,
+	isAdj map[int]bool,
+	contigBounds map[int]bool) []seg {
 	var segs []seg
 	var seg seg
 	segIsOpen := false
 	for k, v := range p {
+		if contigBounds[k] {
+			continue
+		}
 		if segIsOpen {
-			if v < t {
+			if v < t || contigBounds[k+1] {
 				segs = append(segs, seg)
 				segIsOpen = false
 			} else {

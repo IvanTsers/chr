@@ -262,11 +262,12 @@ func TestPileToSeg(t *testing.T) {
 			want := tc.want
 			p := pileHeights(h, slen)
 			isAdj := makeMapAdj(h)
+			contigBounds := make(map[int]bool)
 			threshold := int(math.Floor(tc.threshold * 5.0))
 			if threshold == 0 {
 				threshold = 1
 			}
-			get := pileToSeg(p, threshold, isAdj)
+			get := pileToSeg(p, threshold, isAdj, contigBounds)
 			if !reflect.DeepEqual(want, get) {
 				t.Errorf("\nwant:\n%v\nget:\n%v\n", want, get)
 			}
