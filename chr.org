@@ -632,16 +632,15 @@ and the total subject sequence we have accumulated so far.
 #+begin_export latex
 We append the header to the slice of contig headers. Then we append an
 exclamation mark to the combined subject data and increment the total
-length by one. The new total length us the start of the contig on the
-concatenated subject data. We create a \ty{seg} and append it to the
-slice of contig segments. Finally, we append the contig's data to the
-combined subject's data and increment the total length.
+length by one. Then we create a new segment for the next contig right
+after the exclamation mark and save it. After that, we append the
+contig's data to the subject and increment the total length.
 #+end_export
 #+begin_src go <<Perform the concatenation>>=
   contigHeaders = append(contigHeaders, seqH)
   subjectData = append(subjectData, '!')
   cL += 1
-  cseg = newSeg(cL, seqL)
+  cseg = newSeg(cL + 1, seqL - 1)
   contigSegs = append(contigSegs, cseg)
   subjectData = append(subjectData, seqD...)
   cL += seqL
@@ -1219,15 +1218,28 @@ subject is covered by homologous segments found in queries.
 #+begin_export latex
 \subsubsection{Convert the pile heigths to homologous segments}
 Once we have pile heights at hand, we can convert them to actual
-segments of the reference. If the reference has been cleaned, two
-adjacent homologous segments can be merged into one. The cleaning
-implies removal of non-canonical nucleotides, that is, keeping only
-\ty{A, T, G, C}. The removal shifts proper nucleotides that followed
-the removed characters to the left. As the result, two regions
-separated in the original sequence become adjacent in the cleaned
-sequence (Figure~\ref{fig:MatchEnds}, A). This creates a risk of an
-incorrect interpretation of pile heights unless match ends are not
-neglected (Figure~\ref{fig:MatchEnds}, B).
+segments of the reference. To avoid chimeric sequences in the output,
+we create two maps: \ty{isAdj} and \ty{contigBounds}. The first
+contains positions of adjacent homologous segments, and the second
+contains positions of contig separators (exlcamation marks).  Once the
+maps are created, we convert the pile height to subject segments and
+return the intersection.
+#+end_export
+#+begin_src go <<Convert pile heights to homologous segments>>=
+  //<<Create map of adjacent segments>>
+  //<<Create map of contig bounds>>
+  intersection := pileToSeg(p, t, isAdj, contigBounds)
+  homologs.S = intersection
+#+end_src
+#+begin_export latex
+If the reference has been cleaned, two adjacent homologous segments
+can be merged into one. The cleaning implies removal of non-canonical
+nucleotides, that is, keeping only \ty{A, T, G, C}. The removal shifts
+proper nucleotides that followed the removed characters to the
+left. As the result, two regions separated in the original sequence
+become adjacent in the cleaned sequence (Figure~\ref{fig:MatchEnds},
+A). This creates a risk of an incorrect interpretation of pile heights
+unless match ends are not neglected (Figure~\ref{fig:MatchEnds}, B).
 
 \begin{figure}[H]
     \includegraphics[width=\linewidth]{figMatchEnds.eps}
@@ -1248,21 +1260,17 @@ neglected (Figure~\ref{fig:MatchEnds}, B).
     \label{fig:MatchEnds}
 \end{figure}
 
-To avoid chimeric sequences in the output, we create 'a map of
-adjacency'. This map holds ends of the left segments from pairs. The
-creation of this map is delegated to the \ty{makeMapAdj} function,
-which is not written so far. If we haven't opted for cleaning the
-subject, we just proceed with an empty map without calling the
-\ty{makeMapAdj}. Once the map is built. we perform the conversion and
-return the segments that make up the intersection.
+We create a map of adjacent segments. This map holds ends of the left
+segments from pairs. The creation of this map is delegated to the
+\ty{makeMapAdj} function, which is not written so far. If the user
+hasn't opted for cleaning the subject, we just proceed with an empty
+map without calling the \ty{makeMapAdj}.
 #+end_export
-#+begin_src go <<Convert pile heights to homologous segments>>=
+#+begin_src go <<Create map of adjacent segments>>=
   isAdj := make(map[int]bool)
   if parameters.CleanQuery {
 	  isAdj = makeMapAdj(homologs)
   }
-  intersection := pileToSeg(p, t, isAdj)
-  homologs.S = intersection
 #+end_src
 #+begin_export latex
 We define the function \ty{makeMapAdj}. We search for such pairs of
@@ -1301,21 +1309,41 @@ map \ty{starts} and each end to the slice of \ty{ends}.
   }
 #+end_src
 #+begin_export latex
+If the subject is highly fragmented and query genomes are continious,
+homologous segments may span over several subject sequences. In this,
+case, the intersection will contain chimeric anonymous sequences
+formally not present in the original input. To avoid such a scenario,
+we create a map of subject contig bounds. Keys of this map correspond
+to position of contig separators in the concatenated subject.
+#+end_export
+#+begin_src go <<Create map of contig bounds>>=
+  contigBounds := make(map[int]bool)
+  for _, contig := range subject.contigSegments {
+	  contigBounds[contig.end() + 1] = true
+  }
+#+end_src
+#+begin_export latex
 The function \ty{pileToSeg} returns a slice of segments, where each
 position is covered at least a given number of times. We iterate over
-keys and values of the pile.  We close an opened segment if the pile
-height is below the threshold, otherwise we extend the segment. If
-there is no opened segment, we open it. In the end we close the last
-segment and return the result.
+keys and values of the pile, skipping keys listed in the map of contig
+bounds. We close an opened segment if the pile height is below the
+threshold or the next position is outside of a contig. Otherwise we
+extend the segment. If there is no opened segment, we open it. In the
+end we close the last segment and return the result.
 #+end_export
 #+begin_src go <<Functions>>=
-  func pileToSeg(p []int, t int, isAdj map[int]bool) []seg {
+  func pileToSeg(p []int, t int,
+	  isAdj map[int]bool,
+	  contigBounds map[int]bool) []seg {
 	  var segs []seg
 	  var seg seg
 	  segIsOpen := false
 	  for k, v := range p {
+		  if contigBounds[k] {
+			  continue
+		  }
 		  if segIsOpen {
-			  if v < t {
+			  if v < t || contigBounds[k + 1] {
 				  //<<Close intersection segment>>
 			  } else {
 				  //<<Extend intersection segment>>
@@ -1340,7 +1368,7 @@ segment's status.
 #+end_src
 #+begin_export latex
 The extension implies adding one to the segment's length. After the
-extension we check whether the next position is listed in the
+extension we check whether the next position is listed in the segment
 adjacency map. If so, we close the segment from here.
 #+end_export
 #+begin_src go <<Extend intersection segment>>=
