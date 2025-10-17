@@ -291,7 +291,7 @@ contains:
 !\ty{Intersect()}. The parameters include:
 !
 !1) a reference;
-!2) a path to the directory of target genomes \textit{minus the reference};
+!2) paths to query genomes;
 !4) a threshold, the minimum fraction of intersecting genomes;
 !5) p-value of the shustring length (needed for \ty{sus.Quantile});
 !6) a switch to print \ty{N} at the positions of mismatches;
@@ -302,7 +302,7 @@ contains:
 #+begin_src go <<Data structures>>=
   type Parameters struct{
 	  Reference []*fasta.Sequence
-	  TargetDir string
+	  QueryPaths []string
 	  Threshold float64
 	  ShustrPval float64
 	  PrintN bool
@@ -322,20 +322,17 @@ We import \ty{fasta}.
 !(reference) and query sequences.
 
 The data structure \ty{Parameters} is defined in Section~\ref{Data
-  structure Parameters}. We 'unpack' some fields of the
-\ty{Parameters} to make short aliases and set default values for some
-fields. Then we count files in the specified target directory. If
-there are none, we don't have the material to intersect with, thus we
-return the original sequence. If the files do exist, we prepare the
-subject from the reference and find common homologous regions.
+  structure Parameters}. We 'unpack' the reference field of the
+\ty{Parameters}. Then we check and count query files. If there are
+none, we don't have the material to intersect with, thus we return the
+original sequence. If the files do exist, we prepare the subject from
+the reference and find common homologous regions.
 #+end_export
 #+begin_src go <<Functions>>=
   func Intersect(parameters Parameters) []*fasta.Sequence {
 	  r := parameters.Reference
-	  d := parameters.TargetDir
-	  //<<Set default parameters>>
 	  numFiles := 0
-	  //<<Count files in \ty{d/}>>
+	  //<<Check and count queries>>
 	  if numFiles == 0 {
 		  return r
 	  } else {
@@ -346,27 +343,30 @@ subject from the reference and find common homologous regions.
   }
 #+end_src
 #+begin_export latex
-If the \ty{ShustrPval} field has not been set by the user, we set it
-to the default \ty{0.95}.
+We iterate over the slice of query paths, checking if they exist with
+the function \ty{fileExists}, which we will define shortly. If a query
+file exists, we add one to the number of files. Otherwise we print an
+error and exit.
 #+end_export
-#+begin_src go <<Set default parameters>>=
-  if parameters.ShustrPval == 0.0 {
-	  parameters.ShustrPval = 0.95
+#+begin_src go <<Check and count queries>>=
+  for _, queryPath := range parameters.QueryPaths {
+	  exists, err := fileExists(queryPath)
+	  if err != nil {
+		  fmt.Fprintf(os.Stderr,
+		  "chr.Intersect: error checking query file %s: %v",
+			  queryPath, err)
+		  os.Exit(1)
+	  }
+
+	  if exists {
+		numFiles++
+	  } else {
+		  fmt.Fprintf(os.Stderr,
+			  "chr.Intersect: query file %s does not exist",
+			  queryPath)
+		  os.Exit(1)
+	  }
   }
-#+end_src
-#+begin_export latex
-We open the directory and check for an error. If there is one, we
-report it and stop. If there is no error, we count the files in the
-target directory.
-#+end_export
-#+begin_src go <<Count files in \ty{d/}>>=
-  dirEntries, err := os.ReadDir(d)
-  if err != nil {
-	  fmt.Fprintf(os.Stderr,
-		  "chr.Intersect: error reading %v: %v", d, err)
-	  os.Exit(1)
-  }
-  numFiles = len(dirEntries)
 #+end_src
 #+begin_export latex
 We import \ty{os} and \ty{fmt}.
@@ -374,6 +374,21 @@ We import \ty{os} and \ty{fmt}.
 #+begin_src go <<Imports>>=
   "os"
   "fmt"
+#+end_src
+#+begin_export latex
+The function \ty{fileExists} checks if the file exists.
+#+end_export
+#+begin_src go <<Functions>>=
+  func fileExists(path string) (bool, error) {
+      _, err := os.Stat(path)
+      if err == nil {
+	  return true, nil
+      }
+      if os.IsNotExist(err) {
+	  return false, nil
+      }
+      return false, err
+  }
 #+end_src
 #+begin_export latex
 \subsubsection{Prepare the subject} \label{Prepare the subject}
@@ -609,9 +624,8 @@ the files and send them to the file channel.
 #+end_export
 #+begin_src go <<Send files to the file channel>>=
   go func() {
-	  for _, entry := range dirEntries {	
-		  filePath := d + "/" + entry.Name()
-		  fileChan <- filePath
+	  for _, queryPath := range parameters.QueryPaths {	
+		  fileChan <- queryPath
 	  }
 	  close(fileChan)
   }()

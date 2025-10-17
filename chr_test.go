@@ -292,9 +292,15 @@ func TestIntersect(t *testing.T) {
 			r := readFasta("data/i/" + tc.name + "/t1.fasta")
 			parameters := Parameters{
 				Reference: r,
-				TargetDir: "data/i/" + tc.name + "/t",
-				Threshold: 1.0,
-				PrintN:    false,
+				QueryPaths: []string{
+					"data/i/" + tc.name + "/t/t2.fasta",
+					"data/i/" + tc.name + "/t/t3.fasta",
+					"data/i/" + tc.name + "/t/t4.fasta",
+					"data/i/" + tc.name + "/t/t5.fasta",
+				},
+				ShustrPval: 0.975,
+				Threshold:  1.0,
+				PrintN:     false,
 			}
 			get := Intersect(parameters)
 			wL := len(want)

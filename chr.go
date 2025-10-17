@@ -43,10 +43,10 @@ type match struct {
 	endQ   int
 }
 
-// Fields of this data structure contain parameters used to call Intersect(). The parameters include:  1) a reference; 2) a path to the directory of target genomes minus the reference; 4) a threshold, the minimum fraction of intersecting genomes; 5) p-value of the shustring length (needed for sus.Quantile); 6) a switch to print N at the positions of mismatches; 7) a number of threads.
+// Fields of this data structure contain parameters used to call Intersect(). The parameters include:  1) a reference; 2) paths to query genomes; 4) a threshold, the minimum fraction of intersecting genomes; 5) p-value of the shustring length (needed for sus.Quantile); 6) a switch to print N at the positions of mismatches; 7) a number of threads.
 type Parameters struct {
 	Reference  []*fasta.Sequence
-	TargetDir  string
+	QueryPaths []string
 	Threshold  float64
 	ShustrPval float64
 	PrintN     bool
@@ -124,18 +124,25 @@ func argmax(x []int) int {
 // The function Intersect accepts a struct of Parameters and returns sequences of homologous regions, common to subject (reference) and query sequences.
 func Intersect(parameters Parameters) []*fasta.Sequence {
 	r := parameters.Reference
-	d := parameters.TargetDir
-	if parameters.ShustrPval == 0.0 {
-		parameters.ShustrPval = 0.95
-	}
 	numFiles := 0
-	dirEntries, err := os.ReadDir(d)
-	if err != nil {
-		fmt.Fprintf(os.Stderr,
-			"chr.Intersect: error reading %v: %v", d, err)
-		os.Exit(1)
+	for _, queryPath := range parameters.QueryPaths {
+		exists, err := fileExists(queryPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr,
+				"chr.Intersect: error checking query file %s: %v",
+				queryPath, err)
+			os.Exit(1)
+		}
+
+		if exists {
+			numFiles++
+		} else {
+			fmt.Fprintf(os.Stderr,
+				"chr.Intersect: query file %s does not exist",
+				queryPath)
+			os.Exit(1)
+		}
 	}
-	numFiles = len(dirEntries)
 	if numFiles == 0 {
 		return r
 	} else {
@@ -224,9 +231,8 @@ func Intersect(parameters Parameters) []*fasta.Sequence {
 			go worker()
 		}
 		go func() {
-			for _, entry := range dirEntries {
-				filePath := d + "/" + entry.Name()
-				fileChan <- filePath
+			for _, queryPath := range parameters.QueryPaths {
+				fileChan <- queryPath
 			}
 			close(fileChan)
 		}()
@@ -250,6 +256,16 @@ func Intersect(parameters Parameters) []*fasta.Sequence {
 		result := homologsToFasta(homologs, subject, printN)
 		return result
 	}
+}
+func fileExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
 }
 func appendKeys(a map[int]bool, b map[int]bool) map[int]bool {
 	for key, _ := range b {

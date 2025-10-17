@@ -643,7 +643,13 @@ sensitivity threshold.
 	  r := readFasta("data/i/" + tc.name + "/t1.fasta")
 	  parameters := Parameters{
 		  Reference: r,
-		  TargetDir: "data/i/" + tc.name + "/t",
+		  QueryPaths: []string{
+			  "data/i/" + tc.name + "/t/t2.fasta",
+			  "data/i/" + tc.name + "/t/t3.fasta",
+			  "data/i/" + tc.name + "/t/t4.fasta",
+			  "data/i/" + tc.name + "/t/t5.fasta",
+		  },
+		  ShustrPval: 0.975,
 		  Threshold: 1.0,
 		  PrintN: false,
 	  }
@@ -652,7 +658,7 @@ sensitivity threshold.
   })
 #+end_src 
 #+begin_export latex
-We compare the clengths of the slices. Then we test whether each
+We compare the lengths of the slices. Then we test whether each
 element of \ty{want} is contained in \ty{get}.
 #+end_export
 #+begin_src go <<Compare want and get>>=
@@ -664,7 +670,7 @@ element of \ty{want} is contained in \ty{get}.
 			  "from results:\n%v\n",
 			  want[i].Header(),
 			  string(want[i].Data()))
-		
+
 		  t.Errorf("\nget: '%v'\n%v\n",
 			  get[i].Header(),
 			  string(get[i].Data()))
