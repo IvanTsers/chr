@@ -395,7 +395,7 @@ length of a non-random shustring.
 	  }
   }
   gcContent := gc/atgc
-  minAncLen := sus.Quantile(cL, gcContent, 0.95)
+  minAncLen := sus.Quantile(cL, gcContent, 0.975)
 #+end_src
 #+begin_export latex
 We import \ty{sus}.
@@ -433,15 +433,18 @@ We populate the \ty{subject} object with the calculated values.
 #+begin_export latex
 The function \ty{prepareQuery} returns a struct of \ty{query}. We
 initialize and populate a \ty{query} struct. We read all sequences
-from it, and concatenate and clean them. Then we set the values of the
-\ty{seq} and \ty{l} fields.
+from it, then clean and concatenate them. Then we set the values of
+the \ty{seq} and \ty{l} fields.
 #+end_export
 #+begin_src go <<Auxillary functions>>=
   func prepareQuery(path string) query {
 	  var query query
 	  q := readFasta(path)
+	  for _, qc := range q {
+		  fastautils.Clean(qc)
+		  fastautils.DataToUpper(qc)
+	  }
 	  qSeq, _ := fastautils.Concatenate(q, 0)
-	  fastautils.Clean(qSeq)
 	  query.seq = qSeq.Data()
 	  query.l = len(qSeq.Data())
 	  return query
@@ -602,7 +605,7 @@ we import \ty{math}.
   "math"
 #+end_src
 #+begin_export latex
-\subsection{\ty{Intersect}}
+\subsection{\ty{Intersect}: SARS-CoV-2}
 We emulate a real case workflow using the exported function
 \ty{Intersect} applied to a set of simulated sequences and a set of
 real genones.
@@ -717,3 +720,35 @@ contains an element with the same \ty{Data} as the query \ty{fasta}.
 	  return false
   }
 #+end_src
+#+begin_export latex
+\subsection{\ty{Intersect}: \textit{E. coli}}
+We test the parity of \ty{Intersect} and \ty{phylonium -p} on four
+closely related real genomes of \textit{E. coli} O157:H7: two complete
+genomes of good quality, one highly fragmented genome, and one genome
+that has a lot of ambiguous nucleotides like D, W, or V.
+
+We read the desired output and run the test. After that, we compare
+what we want to what we get.
+#+end_export
+#+begin_src go <<Testing functions>>=
+  func TestIntersectEcoli(t *testing.T) {
+	  want := readFasta("data/o/ecoli.fasta")
+	  t.Run("IntersectEcoli", func(t *testing.T) {		
+		  r := readFasta("data/i/ecoli/r.fasta")
+		  parameters := Parameters{
+			  Reference: r,
+			  QueryPaths: []string{
+				  "data/i/ecoli/frag.fasta",
+				  "data/i/ecoli/good.fasta",
+				  "data/i/ecoli/ambi.fasta",
+			  },
+			  ShustrPval: 0.975,
+			  Threshold: 1.0,
+			  PrintN: false,
+		  }
+		  get := Intersect(parameters)
+		  //<<Compare want and get>>
+	  })
+  }
+#+end_src
+

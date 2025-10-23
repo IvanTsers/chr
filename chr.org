@@ -406,20 +406,20 @@ The preparation of the subject comprises the following steps:
 #+end_export
 #+begin_src go <<Prepare the \ty{subject}>>=
   var subject subject
-  //<<Normalize the contigs>>
+  //<<Normalize subject contigs>>
   //<<Process the contigs>>
   //<<Calculate the minimum anchor length>>
   //<<Build subject's ESA>>
   //<<Populate \ty{subject}>>
 #+end_src
 #+begin_export latex
-We normalize the contigs, that is, remove non-canonical nucleotides
-and convert nucleotides to uppercase.
+We normalize the subject contigs, that is, remove non-canonical
+nucleotides and convert nucleotides to uppercase.
 #+end_export
-#+begin_src go <<Normalize the contigs>>=
-  for i, _ := range r {
-	  fastautils.Clean(r[i])
-	  fastautils.DataToUpper(r[i])
+#+begin_src go <<Normalize subject contigs>>=
+  for _, s := range r {
+	  fastautils.Clean(s)
+	  fastautils.DataToUpper(s)
   }
 #+end_src
 #+begin_export latex
@@ -471,7 +471,7 @@ contig's data to the subject and increment the total length.
   contigHeaders = append(contigHeaders, seqH)
   subjectData = append(subjectData, '!')
   cL += 1
-  cseg = newSeg(cL + 1, seqL - 1)
+  cseg = newSeg(cL, seqL)
   contigSegs = append(contigSegs, cseg)
   subjectData = append(subjectData, seqD...)
   cL += seqL
@@ -633,24 +633,37 @@ the files and send them to the file channel.
 #+begin_export latex
 Let us return to the \ty{worker}'s tasks. We initialize and populate a
 \ty{query} struct (Section~\ref{Data structure query}). We build a
-path to a query file, read all sequences from it, concatenate and
-normalize them (clean and convert to uppercase). Then we set the
-values for the \ty{seq} and \ty{l} fields.
+path to a query file, read all sequences from it, normalize and
+concatenate them. Then we set the values for the \ty{seq} and \ty{l}
+fields.
 #+end_export
 #+begin_src go <<Prepare the \ty{query}>>=
   var query query
   f, _ := os.Open(file)
   queryData := fastautils.ReadAll(f)
   f.Close()
-  qSeq, err := fastautils.Concatenate(queryData, '?')
+
+  //<<Normalize query contigs>>
+
+  qSeq, err := fastautils.Concatenate(queryData, '!')
+
   //<<Respond to the error of sequence concatenation>>
-  fastautils.Clean(qSeq)
-  fastautils.DataToUpper(qSeq)
+
   query.seq = qSeq.Data()
   query.l = len(qSeq.Data())
 #+end_src
 #+begin_export latex
-We print the error and exit.
+We normalize the query, that is, remove non-canonical nucleotides and
+convert nucleotides to uppercase.
+#+end_export
+#+begin_src go <<Normalize query contigs>>=
+  for _, q := range queryData {
+	  fastautils.Clean(q)
+	  fastautils.DataToUpper(q)
+  }
+#+end_src
+#+begin_export latex
+We print the error of sequence concatenation and exit.
 #+end_export
 #+begin_src go <<Respond to the error of sequence concatenation>>=
   if err != nil {
@@ -1133,7 +1146,7 @@ map \ty{starts} and each end to the slice of \ty{ends}.
 #+end_src
 #+begin_export latex
 If the subject is highly fragmented and query genomes are continious,
-homologous segments may span over several subject sequences. In this,
+homologous segments may span over several subject sequences. In this
 case, the intersection will contain chimeric anonymous sequences
 formally not present in the original input. To avoid such a scenario,
 we create a map of subject contig bounds. Keys of this map correspond
@@ -1142,7 +1155,7 @@ to position of contig separators in the concatenated subject.
 #+begin_src go <<Create map of contig bounds>>=
   contigBounds := make(map[int]bool)
   for _, contig := range subject.contigSegments {
-	  contigBounds[contig.end() + 1] = true
+	  contigBounds[contig.end()] = true
   }
 #+end_src
 #+begin_export latex
@@ -1166,7 +1179,7 @@ end we close the last segment and return the result.
 			  continue
 		  }
 		  if segIsOpen {
-			  if v < t || contigBounds[k + 1] {
+			  if v < t || contigBounds[k] {
 				  //<<Close intersection segment>>
 			  } else {
 				  //<<Extend intersection segment>>

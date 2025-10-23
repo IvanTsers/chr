@@ -58,7 +58,7 @@ func prepareSubject(path string) subject {
 		}
 	}
 	gcContent := gc / atgc
-	minAncLen := sus.Quantile(cL, gcContent, 0.95)
+	minAncLen := sus.Quantile(cL, gcContent, 0.975)
 	rev := fasta.NewSequence("reverse", subjectData)
 	rev.ReverseComplement()
 	subjectData = append(subjectData, rev.Data()...)
@@ -74,8 +74,11 @@ func prepareSubject(path string) subject {
 func prepareQuery(path string) query {
 	var query query
 	q := readFasta(path)
+	for _, qc := range q {
+		fastautils.Clean(qc)
+		fastautils.DataToUpper(qc)
+	}
 	qSeq, _ := fastautils.Concatenate(q, 0)
-	fastautils.Clean(qSeq)
 	query.seq = qSeq.Data()
 	query.l = len(qSeq.Data())
 	return query
@@ -337,4 +340,54 @@ func TestIntersect(t *testing.T) {
 			}
 		})
 	}
+}
+func TestIntersectEcoli(t *testing.T) {
+	want := readFasta("data/o/ecoli.fasta")
+	t.Run("IntersectEcoli", func(t *testing.T) {
+		r := readFasta("data/i/ecoli/r.fasta")
+		parameters := Parameters{
+			Reference: r,
+			QueryPaths: []string{
+				"data/i/ecoli/frag.fasta",
+				"data/i/ecoli/good.fasta",
+				"data/i/ecoli/ambi.fasta",
+			},
+			ShustrPval: 0.975,
+			Threshold:  1.0,
+			PrintN:     false,
+		}
+		get := Intersect(parameters)
+		wL := len(want)
+		gL := len(get)
+		minLen := gL
+		if gL != wL {
+			t.Errorf("\nthe result has %d sequences, expected %d",
+				gL, wL)
+			if wL < gL {
+				minLen = wL
+			}
+
+		}
+		wConcat, _ := fastautils.Concatenate(want, 0)
+		gConcat, _ := fastautils.Concatenate(get, 0)
+		if len(wConcat.Data()) != len(gConcat.Data()) {
+			t.Errorf("\nthe result has %d nucleotides, "+
+				"expected %d",
+				len(gConcat.Data()),
+				len(wConcat.Data()))
+		}
+		for i := 0; i < minLen; i++ {
+			if !containsData(get, want[i]) {
+
+				t.Errorf("\nwant:'%v' is absent "+
+					"from results:\n%v\n",
+					want[i].Header(),
+					string(want[i].Data()))
+
+				t.Errorf("\nget: '%v'\n%v\n",
+					get[i].Header(),
+					string(get[i].Data()))
+			}
+		}
+	})
 }

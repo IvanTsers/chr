@@ -147,9 +147,9 @@ func Intersect(parameters Parameters) []*fasta.Sequence {
 		return r
 	} else {
 		var subject subject
-		for i, _ := range r {
-			fastautils.Clean(r[i])
-			fastautils.DataToUpper(r[i])
+		for _, s := range r {
+			fastautils.Clean(s)
+			fastautils.DataToUpper(s)
 		}
 		subjectHeader := r[0].Header()
 		subjectData := r[0].Data()
@@ -166,7 +166,7 @@ func Intersect(parameters Parameters) []*fasta.Sequence {
 				contigHeaders = append(contigHeaders, seqH)
 				subjectData = append(subjectData, '!')
 				cL += 1
-				cseg = newSeg(cL+1, seqL-1)
+				cseg = newSeg(cL, seqL)
 				contigSegs = append(contigSegs, cseg)
 				subjectData = append(subjectData, seqD...)
 				cL += seqL
@@ -205,13 +205,19 @@ func Intersect(parameters Parameters) []*fasta.Sequence {
 				f, _ := os.Open(file)
 				queryData := fastautils.ReadAll(f)
 				f.Close()
-				qSeq, err := fastautils.Concatenate(queryData, '?')
+
+				for _, q := range queryData {
+					fastautils.Clean(q)
+					fastautils.DataToUpper(q)
+				}
+
+				qSeq, err := fastautils.Concatenate(queryData, '!')
+
 				if err != nil {
 					fmt.Fprint(os.Stderr, err)
 					os.Exit(1)
 				}
-				fastautils.Clean(qSeq)
-				fastautils.DataToUpper(qSeq)
+
 				query.seq = qSeq.Data()
 				query.l = len(qSeq.Data())
 				h := findHomologs(query, subject)
@@ -248,7 +254,7 @@ func Intersect(parameters Parameters) []*fasta.Sequence {
 		isAdj := makeMapAdj(homologs)
 		contigBounds := make(map[int]bool)
 		for _, contig := range subject.contigSegments {
-			contigBounds[contig.end()+1] = true
+			contigBounds[contig.end()] = true
 		}
 		intersection := pileToSeg(p, t, isAdj, contigBounds)
 		homologs.S = intersection
@@ -433,7 +439,7 @@ func pileToSeg(p []int, t int,
 			continue
 		}
 		if segIsOpen {
-			if v < t || contigBounds[k+1] {
+			if v < t || contigBounds[k] {
 				segs = append(segs, seg)
 				segIsOpen = false
 			} else {
