@@ -219,7 +219,6 @@ contains:
   \item the minimum anchor length for the sequence;
   \item headers of the contigs used to build the ESA;
   \item coordinates of the contigs on the \ty{Esa.T};
-  \item size of shifts applied to the contig starts (see Section~\ref{Shifts})
 \end{itemize}
 #+end_export
 #+begin_src go <<Data structures>>=
@@ -230,7 +229,6 @@ contains:
 	  a int
 	  contigHeaders []string
 	  contigSegments []seg
-	  contigShifts map[string]int
   }
 #+end_src
 #+begin_export latex
@@ -293,32 +291,21 @@ contains:
 !\ty{Intersect()}. The parameters include:
 !
 !1) a reference;
-!2) a switch to shift reference contig start coordinates to the rigth;
-!3) a path to the directory of target genomes \textit{minus the reference};
+!2) paths to query genomes;
 !4) a threshold, the minimum fraction of intersecting genomes;
 !5) p-value of the shustring length (needed for \ty{sus.Quantile});
-!6) a switch to clean* subject sequence;
-!7) a switch to clean* query sequences;
-!8) a switch to print positions of segregating sites in output headers;
-!9) a switch to print \ty{N} at the positions of mismatches;
-!10) a switch to print one-based coordinates;
-!11) a number of threads. 
-!*To clean a sequence is to remove non-ATGC nucleotides.
+!6) a switch to print \ty{N} at the positions of mismatches;
+!7) a number of threads. 
 
 \ty{Intersect} is defined in Section~\ref{Intersect}.
 #+end_export
 #+begin_src go <<Data structures>>=
   type Parameters struct{
 	  Reference []*fasta.Sequence
-	  ShiftRefRight bool
-	  TargetDir string
+	  QueryPaths []string
 	  Threshold float64
 	  ShustrPval float64
-	  CleanSubject bool
-	  CleanQuery bool
-	  PrintSegSitePos bool
 	  PrintN bool
-	  PrintOneBased bool
 	  NumThreads int
   }
 #+end_src
@@ -329,89 +316,23 @@ We import \ty{fasta}.
   "github.com/evolbioinf/fasta"
 #+end_src
 #+begin_export latex
-\subsubsection{Coordinate systems: parameter \ty{ShiftRefRight}}\label{Shifts}
-The parameter \ty{ShiftRefRight} is useful when the \ty{Reference}
-for \ty{Intersect} is a subset of the original sequence. Such a subset
-can result from a sequence filtering, during which parts of the
-original reference contigs are getting removed, causing a left shift
-of the start coordinates in the downstream regions. An example of this
-is the program \ty{fur}~\cite{hau21:fur}, which processes an original
-sequence (a representative genome) by removing non-unique regions in
-the Subtraction 1 step, often causing splits in the reference contigs.
-
-If a subset of the original reference is used as the input for
-\ty{Intersect}, the output coordinates cannot be directly compared to
-the coordinates of the original contigs. In this case, we might want
-the output to have coordinates compatible with the original
-sequence. To make the coordinates compatible, we shift the output
-coordinates to the right (Figure~\ref{fig:RightShift}).
-
-\begin{figure}
-  \centering
-  \includegraphics[width=0.65\linewidth]{figRightShift.eps}
-  \caption{Coordinates of output sequences $I$ yielded by an
-    \ty{Intersect} run, where a subset $S$ of the original sequence
-    $R$ was used as the \ty{Reference}. To make the coordinates of $I$
-    compatible with the original contig $R$, we must adjust their
-    positions on the contigs $s_1$ and $s_2$ by adding starts of the
-    respective contigs to the starts of $I$ parts within these
-    contigs. $R\{start,end\}$ show coordinates of $I$ on the original
-    reference $R$; $s_n\{start, end\}$ show coordinates of $I$ on the
-    subset $S$. \textbf{Note that \ty{Intersect} uses $S$ coordinates
-      for all internal calculations, and the conversion to $R$
-      coordinates happens only when the results are being printed.}}
-  \label{fig:RightShift}
-\end{figure}
-
-By default (when \ty{ShiftRefRight} is \ty{false}), each reference
-contig is treated by \ty{Intersect} as its own coordinate system,
-starting at 0, with the (exclusive) end coinciding with the length of
-the contig:
-\begin{verbatim}
-0..length
-\end{verbatim}
-If the parameter \ty{ShiftRefRight} is \ty{true}, we shift the output
-start coordinates to the right. We cannot determine the size of the
-shift without a direct comparison of the \ty{Reference} to the
-original sequence. This would be a resource-intensive task to carry
-out within the \ty{chr} package. However, it’s usually possible to
-calculate the new coordinates before calling \ty{Intersect}. Thus, we
-expect the new start coordinates to be included in the headers of the
-subsetted reference in this format:
-\begin{verbatim}
->originalContigName$n$x
-\end{verbatim}
-where \ty{n} is a number of the piece of the original contig, \ty{x}
-is the start of the contig in the original reference. The \ty{n} field
-ensures the uniqueness of the header name. We use the dollar sign
-\ty{\$} to safely delimit the name and the coordinate. Thus,
-\textbf{if you plan to use \ty{Intersect} on a subsetted reference but
-  want the output to show the original coordinates, consider adding
-  the suffix \ty{\$n\$x} (\ty{x} is zero-based) to the headers of the
-  pre-processed sequences.} These will be recognized by \ty{Intersect}
-when \ty{ShiftRefRight} is enabled.
-#+end_export
-#+begin_export latex
 \subsection{\textbf{Function \ty{Intersect}}} \label{Intersect}
 !The function \ty{Intersect} accepts a struct of \ty{Parameters} and
 !returns sequences of homologous regions, common to subject
 !(reference) and query sequences.
 
 The data structure \ty{Parameters} is defined in Section~\ref{Data
-  structure Parameters}. We 'unpack' some fields of the
-\ty{Parameters} to make short aliases and set default values for some
-fields. Then we count files in the specified target directory. If
-there are none, we don't have the material to intersect with, thus we
-return the original sequence. If the files do exist, we prepare the
-subject from the reference and find common homologous regions.
+  structure Parameters}. We 'unpack' the reference field of the
+\ty{Parameters}. Then we check and count query files. If there are
+none, we don't have the material to intersect with, thus we return the
+original sequence. If the files do exist, we prepare the subject from
+the reference and find common homologous regions.
 #+end_export
 #+begin_src go <<Functions>>=
   func Intersect(parameters Parameters) []*fasta.Sequence {
 	  r := parameters.Reference
-	  d := parameters.TargetDir
-	  //<<Set default parameters>>
 	  numFiles := 0
-	  //<<Count files in \ty{d/}>>
+	  //<<Check and count queries>>
 	  if numFiles == 0 {
 		  return r
 	  } else {
@@ -422,27 +343,30 @@ subject from the reference and find common homologous regions.
   }
 #+end_src
 #+begin_export latex
-If the \ty{ShustrPval} field has not been set by the user, we set it
-to the default \ty{0.95}.
+We iterate over the slice of query paths, checking if they exist with
+the function \ty{fileExists}, which we will define shortly. If a query
+file exists, we add one to the number of files. Otherwise we print an
+error and exit.
 #+end_export
-#+begin_src go <<Set default parameters>>=
-  if parameters.ShustrPval == 0.0 {
-	  parameters.ShustrPval = 0.95
+#+begin_src go <<Check and count queries>>=
+  for _, queryPath := range parameters.QueryPaths {
+	  exists, err := fileExists(queryPath)
+	  if err != nil {
+		  fmt.Fprintf(os.Stderr,
+		  "chr.Intersect: error checking query file %s: %v",
+			  queryPath, err)
+		  os.Exit(1)
+	  }
+
+	  if exists {
+		numFiles++
+	  } else {
+		  fmt.Fprintf(os.Stderr,
+			  "chr.Intersect: query file %s does not exist",
+			  queryPath)
+		  os.Exit(1)
+	  }
   }
-#+end_src
-#+begin_export latex
-We open the directory and check for an error. If there is one, we
-report it and stop. If there is no error, we count the files in the
-target directory.
-#+end_export
-#+begin_src go <<Count files in \ty{d/}>>=
-  dirEntries, err := os.ReadDir(d)
-  if err != nil {
-	  fmt.Fprintf(os.Stderr,
-		  "chr.Intersect: error reading %v: %v", d, err)
-	  os.Exit(1)
-  }
-  numFiles = len(dirEntries)
 #+end_src
 #+begin_export latex
 We import \ty{os} and \ty{fmt}.
@@ -450,6 +374,21 @@ We import \ty{os} and \ty{fmt}.
 #+begin_src go <<Imports>>=
   "os"
   "fmt"
+#+end_src
+#+begin_export latex
+The function \ty{fileExists} checks if the file exists.
+#+end_export
+#+begin_src go <<Functions>>=
+  func fileExists(path string) (bool, error) {
+      _, err := os.Stat(path)
+      if err == nil {
+	  return true, nil
+      }
+      if os.IsNotExist(err) {
+	  return false, nil
+      }
+      return false, err
+  }
 #+end_src
 #+begin_export latex
 \subsubsection{Prepare the subject} \label{Prepare the subject}
@@ -467,7 +406,6 @@ The preparation of the subject comprises the following steps:
 #+end_export
 #+begin_src go <<Prepare the \ty{subject}>>=
   var subject subject
-  subject.contigShifts = make(map[string]int)
   //<<Normalize the contigs>>
   //<<Process the contigs>>
   //<<Calculate the minimum anchor length>>
@@ -475,16 +413,12 @@ The preparation of the subject comprises the following steps:
   //<<Populate \ty{subject}>>
 #+end_src
 #+begin_export latex
-We normalize the contigs. The complete normalization implies 1)
-converting nucleotides to uppercase, and 2) removing non-canonical
-nucleotides. We do the latter only if \ty{parameters.CleanSubject} has
-been set to \ty{true}.
+We normalize the contigs, that is, remove non-canonical nucleotides
+and convert nucleotides to uppercase.
 #+end_export
 #+begin_src go <<Normalize the contigs>>=
   for i, _ := range r {
-	  if parameters.CleanSubject {
-		  fastautils.Clean(r[i])
-	  }
+	  fastautils.Clean(r[i])
 	  fastautils.DataToUpper(r[i])
   }
 #+end_src
@@ -495,26 +429,14 @@ We import \ty{fastautils}.
   "github.com/ivantsers/fastautils"
 #+end_src
 #+begin_export latex
-We 'unpack' the \ty{ShiftRefRight} fieild of the parameters, then
-extract the first subject sequence's \ty{Header} and
-\ty{Data}. Thereafter, we respond to \ty{ShiftRefRight} by calling the
-function \ty{extractShiftField}, which we will define shortly. The
-function will try to read the shift field \ty{\$x} from the header. We
-proceed with the initialization of the the fields describing the
-subject's contigs. If there is more than one contig, we concatenate
-all contigs into one sequence.
+We extract the first subject sequence's \ty{Header} and
+\ty{Data}. Thereafter, we initialize fields describing the subject's
+contigs. If there is more than one contig, we concatenate all contigs
+into one sequence.
 #+end_export
 #+begin_src go <<Process the contigs>>=
-  shiftRefRight := parameters.ShiftRefRight
   subjectHeader := r[0].Header()
   subjectData := r[0].Data()
-  if shiftRefRight {
-	  err := extractShiftField(subjectHeader, &subject)
-	  if err != nil {
-		  fmt.Fprint(os.Stderr, err)
-		  os.Exit(1)
-	  }
-  }
   contigHeaders := []string{subjectHeader}
   contigSegs := []seg{newSeg(0, len(subjectData))}
   cL := len(subjectData)
@@ -523,94 +445,10 @@ all contigs into one sequence.
   }
 #+end_src
 #+begin_export latex
-\subsubsection{Read the reference contig shift}
-The function \ty{extractShiftField} accepts a header and a pointer to
-the \ty{subject} struct. It updates the \ty{subject.contigShifts} map
-if the input header contains shift fields \ty{\$n\$x}
-(Section~\ref{Shifts}). The function's only return is an error.
-
-We initialize an error, then check whether our input variables are
-empty. Then we split the header into fields by \ty{\$}, and create
-error messages if there are problems with the splitting. Once we have
-read the shift fields, we update the shifts map of the \ty{subject}
-struct.
-#+end_export
-#+begin_src go <<Functions>>=
-  func extractShiftField(header string, subject *subject) error {
-	  var err error
-	  //<<Are the inputs empty?>>
-	  headerFields := strings.Split(header, "$")
-
-	  if len(headerFields) < 3 || <<Any field is empty>>  {
-		  //<<Error of splitting>>
-	  }
-
-	  shift, errConv := strconv.Atoi(headerFields[2])
-	  if errConv != nil {
-		  //<<Error of type conversion>>
-	  }
-
-	  subject.contigShifts[header] = shift
-
-	  return err
-  }
-
-#+end_src
-#+begin_export latex
-We import \ty{strings} and \ty{strconv}.
-#+end_export
-#+begin_src go <<Imports>>=
-  "strings"
-  "strconv"
-#+end_src
-#+begin_export latex
-We check whether the header is an empty string or the subject is
-\ty{nil}. If so, we create the corresponding error message and return
-early.
-#+end_export
-#+begin_src go <<Are the inputs empty?>>=
-  if header == "" {
-	  err = fmt.Errorf("chr.Intersect: failed " +
-		  "extractShiftField: header is empty\n")
-	  return err
-  }
-  if subject == nil {
-	  err = fmt.Errorf("chr.Intersect: failed " +
-		  "extractShiftField: subject is nil\n")
-	  return err
-  }
-#+end_src
-#+begin_export latex
-We check if any of the fields of the header is empty.
-#+end_export
-#+begin_src go <<Any field is empty>>=
-  headerFields[1] == "" || headerFields[2] == ""
-#+end_src
-#+begin_export latex
-We create an error message for a failed field splitting.
-#+end_export
-#+begin_src go <<Error of splitting>>=
-  err = fmt.Errorf(
-	  "chr.Intersect: error reading " +
-	  "shift fields in the reference " +
-	  "header %v\n", header)
-#+end_src
-#+begin_export latex
-We create an error message for a failed string to integer conversion
-and extend it with the error of the \ty{strconv.Atoi}.
-#+end_export
-#+begin_src go <<Error of type conversion>>=
-  err = fmt.Errorf(
-	  "chr.Intersect: error converting " +
-	  "a shift field into an integer:" +
-	  "\n\t%v\n", errConv)
-#+end_src
-#+begin_export latex
 We traverse the slice of subject sequences, extract their headers and
 data, and initialize a segment describing the current contig. Then we
-check whether \ty{ShiftRefRight} is \ty{true}. If so, we extract the
-shift value from a header. Then we concatenate the current sequence
-and the total subject sequence we have accumulated so far.
+concatenate the current sequence and the total subject sequence we
+have accumulated so far.
 #+end_export
 #+begin_src go <<Concatenate subject's contigs>>=
   for i := 1; i < len(r); i++ {
@@ -618,14 +456,7 @@ and the total subject sequence we have accumulated so far.
 	  seqH := seq.Header()
 	  seqD := seq.Data()
 	  seqL := len(seqD)
-	  var cseg seg // initialize a segment
-	  if shiftRefRight {
-		  err := extractShiftField(seqH, &subject)
-		  if err != nil {
-			  fmt.Fprint(os.Stderr, err)
-			  os.Exit(1)
-		  }
-	  }
+	  var cseg seg
 	  //<<Perform the concatenation>>
   }
 #+end_src
@@ -793,9 +624,8 @@ the files and send them to the file channel.
 #+end_export
 #+begin_src go <<Send files to the file channel>>=
   go func() {
-	  for _, entry := range dirEntries {	
-		  filePath := d + "/" + entry.Name()
-		  fileChan <- filePath
+	  for _, queryPath := range parameters.QueryPaths {	
+		  fileChan <- queryPath
 	  }
 	  close(fileChan)
   }()
@@ -804,8 +634,8 @@ the files and send them to the file channel.
 Let us return to the \ty{worker}'s tasks. We initialize and populate a
 \ty{query} struct (Section~\ref{Data structure query}). We build a
 path to a query file, read all sequences from it, concatenate and
-normalize them (clean if asked to, convert to uppercase always). Then
-we set the values for the \ty{seq} and \ty{l} fields.
+normalize them (clean and convert to uppercase). Then we set the
+values for the \ty{seq} and \ty{l} fields.
 #+end_export
 #+begin_src go <<Prepare the \ty{query}>>=
   var query query
@@ -814,9 +644,7 @@ we set the values for the \ty{seq} and \ty{l} fields.
   f.Close()
   qSeq, err := fastautils.Concatenate(queryData, '?')
   //<<Respond to the error of sequence concatenation>>
-  if parameters.CleanQuery {
-	  fastautils.Clean(qSeq)
-  }
+  fastautils.Clean(qSeq)
   fastautils.DataToUpper(qSeq)
   query.seq = qSeq.Data()
   query.l = len(qSeq.Data())
@@ -1232,8 +1060,8 @@ return the intersection.
   homologs.S = intersection
 #+end_src
 #+begin_export latex
-If the reference has been cleaned, two adjacent homologous segments
-can be merged into one. The cleaning implies removal of non-canonical
+When reference has been cleaned, two adjacent homologous segments can
+be merged into one. The cleaning implies removal of non-canonical
 nucleotides, that is, keeping only \ty{A, T, G, C}. The removal shifts
 proper nucleotides that followed the removed characters to the
 left. As the result, two regions separated in the original sequence
@@ -1262,15 +1090,10 @@ unless match ends are not neglected (Figure~\ref{fig:MatchEnds}, B).
 
 We create a map of adjacent segments. This map holds ends of the left
 segments from pairs. The creation of this map is delegated to the
-\ty{makeMapAdj} function, which is not written so far. If the user
-hasn't opted for cleaning the subject, we just proceed with an empty
-map without calling the \ty{makeMapAdj}.
+\ty{makeMapAdj} function, which is not written so far.
 #+end_export
 #+begin_src go <<Create map of adjacent segments>>=
-  isAdj := make(map[int]bool)
-  if parameters.CleanQuery {
-	  isAdj = makeMapAdj(homologs)
-  }
+  isAdj := makeMapAdj(homologs)
 #+end_src
 #+begin_export latex
 We define the function \ty{makeMapAdj}. We search for such pairs of
@@ -1397,10 +1220,7 @@ written. The output of this function is the \ty{return} of
 #+end_export
 #+begin_src go <<Convert homologs to sequences>>=
   printN := parameters.PrintN
-  printOneBased := parameters.PrintOneBased
-  printSegSitePos := parameters.PrintSegSitePos
-  result := homologsToFasta(homologs, subject, printN,
-	  printOneBased, printSegSitePos, shiftRefRight)
+  result := homologsToFasta(homologs, subject, printN)
   return result
 #+end_src
 #+begin_export latex
@@ -1415,15 +1235,12 @@ data, its header, and use them to make a sequence.
 #+end_export
 #+begin_src go <<Functions>>=
   func homologsToFasta(h Homologs, subject subject,
-	  printN bool,
-	  printOneBased bool,
-	  printSegSitePos bool,
-	  shiftRefRight bool) []*fasta.Sequence {
-	
+	  printN bool) []*fasta.Sequence {
+
 	  var sequences []*fasta.Sequence
 	  segs := h.S
 	  ns := h.N
-	  for _, seg := range segs {
+	  for num_seg, seg := range segs {
 		  //<<Construct sequence data>>
 		  //<<Construct sequence header>>
 		  seq := fasta.NewSequence(header, data)
@@ -1462,31 +1279,18 @@ segregating sites. If so, we replace the byte with an \ty{N}.
 #+end_src
 #+begin_export latex
 We construct the sequence's header that contains the orginal contig's
-header \ty{ch}, an underscore, and coordianates of the start (\ty{cs}) and the
-end (\ty{ce}):
+header \ty{ch}, an underscore, and the segment's number \ty{sn}, for
+example:
 \begin{verbatim}
-ch_(cs..ce)
+contig1_1
 \end{verbatim}
-To find \ty{ch}, \ty{cs}, and \ty{ce}, we call \ty{findSegment}, which
-we still have to implement. We convert zero-based end-exclusive
-coordinates to one-based \textit{end-inclusive} coordinates if the
-respective switch is set to \ty{true}. To do this, we add one to the
-start.
-
-If \ty{printSegSitePos} has been switched to \ty{true}, we build
-segsite positions string with the \ty{buildSegSiteStr} function, which
-is yet to be defined. Then we append the string to the header.
+To find \ty{sn}, we add one to the current segment index.  To find
+\ty{sn}, we call \ty{findSegment}, which we still have to implement.
 #+end_export
 #+begin_src go <<Construct sequence header>>=
-  ch, cs, ce := findSegment(seg, subject, shiftRefRight)
-  if printOneBased {
-	  cs += 1
-  }
-  header := fmt.Sprintf("%s_(%d..%d)", ch, cs, ce)
-  if printSegSitePos {
-	  segsites := buildSegSiteStr(seg, ns, printOneBased)
-	  header += " " + segsites
-  }
+  sn := num_seg + 1
+  ch := findSegment(seg, subject)
+  header := fmt.Sprintf("%s_%d", ch, sn)
 #+end_src
 #+begin_export latex
 \subsubsection{Auxillary functions for output formatting}
@@ -1499,122 +1303,40 @@ We initialize the variables:
 \begin{itemize}
   \itemsep0em
 \item \ty{ch} for contig header,
-\item \ty{cs}, \ty{ce} for start and end of the segment on the related
-  contig,
-  \item a \ty{shift} value to add to \ty{cs}. It takes a non-zero
-    value if \ty{shiftRefRight} is toggled.
 \end{itemize}
 
 After this, we 'unpack' some fields of the \ty{subject}. Then we check
 whether our segment is located within some of the contigs using the
-function \ty{isWithin}, which we still need to write. If so, we get
-the contig's header and find the shift value using the map of
-shifts. After this, we remove the shifr fields.
+function \ty{startsWithin}, which we still need to write. If so, we
+get the contig's header.
 
-Once we have the shift value at hand, we can calculate \ty{cs} and
-\ty{ce}. A segment can be found only once because the homologs are
-unique and do not overlap, so we break as soon as we've found the
-contig it belongs to.
+A segment can be found only once because the homologs are unique and
+do not overlap, so we break as soon as we've found the contig it
+belongs to.
 #+end_export
 #+begin_src go <<Functions>>=
-  func findSegment(seg seg, subject subject,
-	  shiftRefRight bool) (string, int, int) {
+  func findSegment(seg seg, subject subject) (string) {
 
 	  var ch string
-	  var cs, ce, shift int
+	  
 	  contigHeaders := subject.contigHeaders
 	  contigSegments := subject.contigSegments
-	  contigShifts := subject.contigShifts
 
 	  for i, contigSeg := range contigSegments {
-		  if isWithin(seg, contigSeg) {
+		  if startsWithin(seg, contigSeg) {
 			  ch = contigHeaders[i]
-			  if shiftRefRight {
-				  shift = contigShifts[ch]
-				  //<<Truncate the shift field>>
-			  }
-			  cs = seg.s - contigSeg.s + shift
-			  ce = cs + seg.l
 			  break
 		  }
 	  }
-	  return ch, cs, ce
+	  return ch
   }
 #+end_src
 #+begin_export latex
-\textbf{\ty{isWithin}} checks if an inner \ty{seg} is located within
+\textbf{\ty{startsWithin}} checks if an inner \ty{seg} starts within
 an outer \ty{seg}.
 #+end_export
 #+begin_src go <<Functions>>=
-  func isWithin(in seg, out seg) bool {
-	  return in.s >= out.s && in.end() <= out.end()
+  func startsWithin(in seg, out seg) bool {
+	  return in.s >= out.s
   }
-#+end_src
-#+begin_export latex
-We remove the remainders of the \ty{\$}-separated fields from the
-contig name.
-#+end_export
-#+begin_src go <<Truncate the shift field>>= 
-  chFields := strings.Split(ch, "$")
-  ch = chFields[0]
-#+end_src
-#+begin_export latex
-\textbf{\ty{buildSegSiteStr}} accepts a segment, a map of segregating
-sites (\ty{Homologs.N}), and a switch for printing one-based
-coordinates. It builds a string of segregating site
-coordinates. Imagine a homologous region that has substitutions at
-positions 2, 4, 6, 7, 8, 10 (6 in total). The \ty{segSiteStr} of this
-sequence has the following format:
-\begin{verbatim}
-6 2 4 6 7 8 10
-\end{verbatim}
- We calculate the number of segregating sites and begin to build our
- \ty{segSiteStr}. We report only sites found within the specificed
- segment.
-#+end_export
-#+begin_src go <<Functions>>=
-  func buildSegSiteStr(seg seg, ns map[int]bool,
-	  printOneBased bool) string {
-	  var positions []int
-	  for i := seg.s; i < seg.end(); i++ {
-		  //<<Add positions found within the \ty{seg}>>
-	  }
-	  //<<Build the segsite string>>
-  }
-#+end_src
-#+begin_export latex
-We traverse the segregating sites of the current segment, transform
-the coordinates, and save the coordinate in \ty{positions}.
-#+end_export
-#+begin_src go <<Add positions found within the \ty{seg}>>=
-  if ns[i] {
-	  pos := i - seg.s
-	  //<<Convert to one-based?>>
-	  positions = append(positions, pos)
-  }
-#+end_src
-#+begin_export latex
-We add one if the corresponding \ty{Parameters}' switch is toggled.
-#+end_export
-#+begin_src go <<Convert to one-based?>>=
-  if printOneBased {
-	  pos++
-  }
-#+end_src
-#+begin_export latex
-We initialize a \ty{Builder} for our output string. Then we write the
-number of segregating sites followed by their coordinates separated with
-blanks.
-#+end_export
-#+begin_src go <<Build the segsite string>>=
-  var builder strings.Builder
-  numSegSites := len(positions)
-  builder.WriteString(strconv.Itoa(numSegSites))
-
-  for _, pos := range positions {
-	  builder.WriteString(" ")
-	  builder.WriteString(strconv.Itoa(pos))
-  }
-
-  return builder.String()
 #+end_src
