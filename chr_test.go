@@ -1,9 +1,11 @@
 package chr
 
 import (
+	"fmt"
 	"github.com/evolbioinf/esa"
+	"github.com/evolbioinf/fasta"
 	"github.com/evolbioinf/sus"
-	"github.com/ivantsers/fasta"
+	"github.com/ivantsers/fastautils"
 	"math"
 	"math/rand"
 	"os"
@@ -15,7 +17,7 @@ import (
 
 func readFasta(path string) []*fasta.Sequence {
 	f, _ := os.Open(path)
-	contigs := fasta.ReadAll(f)
+	contigs := fastautils.ReadAll(f)
 	f.Close()
 	return contigs
 }
@@ -23,7 +25,7 @@ func prepareSubject(path string) subject {
 	var subject subject
 	r := readFasta(path)
 	for i, _ := range r {
-		r[i].Clean()
+		fastautils.Clean(r[i])
 	}
 	subjectHeader := r[0].Header()
 	subjectData := r[0].Data()
@@ -72,10 +74,10 @@ func prepareSubject(path string) subject {
 func prepareQuery(path string) query {
 	var query query
 	q := readFasta(path)
-	qSeq := fasta.Concatenate(q, 0)
-	qSeq.Clean()
+	qSeq, _ := fastautils.Concatenate(q, 0)
+	fastautils.Clean(qSeq)
 	query.seq = qSeq.Data()
-	query.l = qSeq.Length()
+	query.l = len(qSeq.Data())
 	return query
 }
 func containsData(slice []*fasta.Sequence,
@@ -90,8 +92,8 @@ func containsData(slice []*fasta.Sequence,
 func TestSort(t *testing.T) {
 	var starts []int
 	var segments []seg
+	rand.Seed(time.Now().UnixNano())
 	for i := 0; i < 12; i++ {
-		rand.Seed(time.Now().UnixNano())
 		rs := rand.Intn(1000000000)
 		rl := 1 + rand.Intn(999999999)
 		starts = append(starts, rs)
@@ -132,7 +134,7 @@ func TestSort(t *testing.T) {
 		})
 	}
 }
-func TestReduceOverlaps(t *testing.T) {
+func TestFilterOverlaps(t *testing.T) {
 	x := newSeg(0, 10)
 	y := newSeg(5, 10)
 	z := newSeg(5, 20)
@@ -160,10 +162,11 @@ func TestReduceOverlaps(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			h := Homologs{S: tc.input, N: make(map[int]bool)}
-			h.reduceOverlaps()
+			h.filterOverlaps()
 			get := h.S
 			if !reflect.DeepEqual(get, tc.want) {
-				t.Errorf("\nwant:\n%v\nget:\n%v\n", tc.want, get)
+				t.Errorf("\nwant:\n%v\nget:\n%v\n",
+					tc.want, get)
 			}
 		})
 	}
@@ -200,15 +203,16 @@ func TestFindHomologs(t *testing.T) {
 			subject := prepareSubject("data/s/" + tc.input)
 			query := prepareQuery("data/q/" + tc.input)
 			h := findHomologs(query, subject)
-			h.reduceOverlaps()
-			get := homologsToFasta(h, subject, false, true)
-			PrintSegsiteRanges(h, os.Stdout, false)
-			for i := range get {
-				if !reflect.DeepEqual(get[i].Data(),
+			h.filterOverlaps()
+			get := homologsToFasta(h, subject, false, true, true,
+				false)
+			for i, g := range get {
+				fmt.Fprintln(os.Stderr, g.Header())
+				if !reflect.DeepEqual(g.Data(),
 					tc.want[i].Data()) {
 					t.Errorf("\nwant:\n%v\nget:\n%v\n",
 						string(tc.want[i].Data()),
-						string(get[i].Data()))
+						string(g.Data()))
 				}
 			}
 		})
@@ -258,11 +262,12 @@ func TestPileToSeg(t *testing.T) {
 			want := tc.want
 			p := pileHeights(h, slen)
 			isAdj := makeMapAdj(h)
+			contigBounds := make(map[int]bool)
 			threshold := int(math.Floor(tc.threshold * 5.0))
 			if threshold == 0 {
 				threshold = 1
 			}
-			get := pileToSeg(p, threshold, isAdj)
+			get := pileToSeg(p, threshold, isAdj, contigBounds)
 			if !reflect.DeepEqual(want, get) {
 				t.Errorf("\nwant:\n%v\nget:\n%v\n", want, get)
 			}
@@ -290,6 +295,8 @@ func TestIntersect(t *testing.T) {
 				Reference:     r,
 				TargetDir:     "data/i/" + tc.name + "/t",
 				Threshold:     1.0,
+				CleanSubject:  true,
+				CleanQuery:    true,
 				PrintN:        false,
 				PrintOneBased: true,
 			}
@@ -305,18 +312,45 @@ func TestIntersect(t *testing.T) {
 				}
 
 			}
-			wConcat := fasta.Concatenate(want, 0)
-			gConcat := fasta.Concatenate(get, 0)
+			wConcat, _ := fastautils.Concatenate(want, 0)
+			gConcat, _ := fastautils.Concatenate(get, 0)
 			if len(wConcat.Data()) != len(gConcat.Data()) {
-				t.Errorf("\nthe result has %d nucleotides, expected %d",
-					len(gConcat.Data()), len(wConcat.Data()))
+				t.Errorf("\nthe result has %d nucleotides, "+
+					"expected %d",
+					len(gConcat.Data()),
+					len(wConcat.Data()))
 			}
 			for i := 0; i < minLen; i++ {
 				if !containsData(get, want[i]) {
-					t.Errorf("\n'%v' is absent from results:\n%v\n",
-						want[i].Header(), string(want[i].Data()))
+
+					t.Errorf("\nwant:'%v' is absent "+
+						"from results:\n%v\n",
+						want[i].Header(),
+						string(want[i].Data()))
+
+					t.Errorf("\nget: '%v'\n%v\n",
+						get[i].Header(),
+						string(get[i].Data()))
 				}
 			}
 		})
+	}
+}
+func TestShiftRefSeg(t *testing.T) {
+	want := fmt.Sprintf("t1_(%d..%d)",
+		2+4477, 1052+4477)
+	ref := readFasta("data/i/shift/s1.fasta")
+	parameters := Parameters{
+		Reference:     ref,
+		ShiftRefRight: true,
+		TargetDir:     "data/i/shift/t",
+		Threshold:     1.0,
+		PrintOneBased: true,
+	}
+	isc := Intersect(parameters)
+	get := isc[0].Header()
+	if want != get {
+		t.Errorf("\nwant:\n%v\nget:\n%v\n",
+			want, get)
 	}
 }
