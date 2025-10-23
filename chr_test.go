@@ -204,8 +204,7 @@ func TestFindHomologs(t *testing.T) {
 			query := prepareQuery("data/q/" + tc.input)
 			h := findHomologs(query, subject)
 			h.filterOverlaps()
-			get := homologsToFasta(h, subject, false, true, true,
-				false)
+			get := homologsToFasta(h, subject, false)
 			for i, g := range get {
 				fmt.Fprintln(os.Stderr, g.Header())
 				if !reflect.DeepEqual(g.Data(),
@@ -292,13 +291,16 @@ func TestIntersect(t *testing.T) {
 			want := tc.want
 			r := readFasta("data/i/" + tc.name + "/t1.fasta")
 			parameters := Parameters{
-				Reference:     r,
-				TargetDir:     "data/i/" + tc.name + "/t",
-				Threshold:     1.0,
-				CleanSubject:  true,
-				CleanQuery:    true,
-				PrintN:        false,
-				PrintOneBased: true,
+				Reference: r,
+				QueryPaths: []string{
+					"data/i/" + tc.name + "/t/t2.fasta",
+					"data/i/" + tc.name + "/t/t3.fasta",
+					"data/i/" + tc.name + "/t/t4.fasta",
+					"data/i/" + tc.name + "/t/t5.fasta",
+				},
+				ShustrPval: 0.975,
+				Threshold:  1.0,
+				PrintN:     false,
 			}
 			get := Intersect(parameters)
 			wL := len(want)
@@ -334,23 +336,5 @@ func TestIntersect(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-func TestShiftRefSeg(t *testing.T) {
-	want := fmt.Sprintf("t1_(%d..%d)",
-		2+4477, 1052+4477)
-	ref := readFasta("data/i/shift/s1.fasta")
-	parameters := Parameters{
-		Reference:     ref,
-		ShiftRefRight: true,
-		TargetDir:     "data/i/shift/t",
-		Threshold:     1.0,
-		PrintOneBased: true,
-	}
-	isc := Intersect(parameters)
-	get := isc[0].Header()
-	if want != get {
-		t.Errorf("\nwant:\n%v\nget:\n%v\n",
-			want, get)
 	}
 }
