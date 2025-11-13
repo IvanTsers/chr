@@ -12,7 +12,6 @@ type Parameters struct {
         QueryPaths      []string
         Threshold       float64
         ShustrPval      float64
-        PrintN          bool
         NumThreads   	int
 }
 ```
@@ -20,7 +19,7 @@ type Parameters struct {
     The parameters include: 
 
  1. reference slice of `fasta` sequences
- 3. paths to queries
- 4. a threshold, the minimum fraction of intersecting genomes
- 5. a p-value of the shustring length (needed for [`sus`](https://github.com/evolbioinf/sus).Quantile)
- 6. number of threads (maximum threads used for parallel query processing)
+ 2. paths to queries
+ 3. a threshold, the minimum fraction of intersecting genomes
+ 4. a p-value of the shustring length (needed for [`sus`](https://github.com/evolbioinf/sus).Quantile)
+ 5. number of threads (maximum threads used for parallel query processing)
