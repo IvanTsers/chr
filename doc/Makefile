@@ -1,5 +1,11 @@
 NAME = chr
+
+# Build the version string
+TAG = $(shell git tag -l | sort -V | tail -n1)
+VERSION = $(shell git log --pretty=format:"%cs, ${TAG}-%h" -n 1)
+
 all: $(NAME)Doc.pdf
+	echo $(VERSION) > version.txt
 	latex $(NAME)Doc
 	bibtex $(NAME)Doc
 	latex $(NAME)Doc
