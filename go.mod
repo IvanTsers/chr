@@ -9,3 +9,5 @@ require (
 	github.com/ivantsers/fastautils v0.0.0-20241118142913-f5f2f9b175e5
 
 )
+
+replace github.com/evolbioinf/esa => github.com/ivantsers/esa v0.0.0-20260120134439-483745076bff
