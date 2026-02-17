@@ -1350,6 +1350,6 @@ an outer \ty{seg}.
 #+end_export
 #+begin_src go <<Functions>>=
   func startsWithin(in seg, out seg) bool {
-	  return in.s >= out.s
+	  return in.s >= out.s && in.s < out.end()
   }
 #+end_src

@@ -504,5 +504,5 @@ func findSegment(seg seg, subject subject) string {
 	return ch
 }
 func startsWithin(in seg, out seg) bool {
-	return in.s >= out.s
+	return in.s >= out.s && in.s < out.end()
 }
